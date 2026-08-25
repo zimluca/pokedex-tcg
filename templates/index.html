@@ -9,6 +9,22 @@
 <body class="bg-gray-100">
     <div class="container mx-auto p-4">
         <h1 class="text-4xl font-bold text-center mt-10">Il mio Pokédex di Carte</h1>
+        <form class="mt-10 flex justify-center" method="GET" action="/search">
+            <input type="text" name="query" class="border border-gray-300 rounded-l-md py-2 px-4 w-96" placeholder="Inserisci il nome della carta">
+            <button type="submit" class="bg-blue-500 text-white rounded-r-md py-2 px-4">Cerca</button>
+        </form>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-10" id="results">
+            {% for card in results %}
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <img src="{{ card.immagine_url }}" alt="{{ card.nome_carta }}" class="w-full h-48 object-cover">
+                <div class="p-4">
+                    <h2 class="text-xl font-bold">{{ card.nome_carta }}</h2>
+                    <p class="text-gray-600">Set: {{ card.id_set }}</p>
+                    <p class="text-gray-600">Prezzo stimato: {{ card.prezzo_stimato }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 </body>
 </html>
