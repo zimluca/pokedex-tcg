@@ -17,8 +17,15 @@ def search():
     if not query:
         return render_template('index.html', results=[])
 
-    response = requests.get(f"https://api.pokemontcg.io/v2/cards?q=name:{query}")
-    data = response.json()
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(f"https://api.pokemontcg.io/v2/cards?q=name:{query}", headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+    else:
+        print(f"Errore di connessione: {response.status_code}")
+        print(response.text)
+        return render_template('index.html', results=[], error='Errore di connessione al database Pokémon')
     cards = []
 
     for card in data.get('data', []):
