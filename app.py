@@ -9,13 +9,24 @@ db.init_app(app)
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get("https://api.pokemontcg.io/v2/sets", headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        sets = sorted(data.get('data', []), key=lambda x: x.get('releaseDate', ''), reverse=True)
+    else:
+        print(f"Errore di connessione: {response.status_code}")
+        print(response.text)
+        sets = []
+
+    return render_template('index.html', sets=sets, results=[])
 
 @app.route('/search', methods=['GET'])
 def search():
     query = request.args.get('query', '')
     if not query:
-        return render_template('index.html', results=[])
+        return render_template('index.html', sets=[], results=[])
 
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get(f"https://api.pokemontcg.io/v2/cards?q=name:{query}", headers=headers)
@@ -25,7 +36,7 @@ def search():
     else:
         print(f"Errore di connessione: {response.status_code}")
         print(response.text)
-        return render_template('index.html', results=[], error='Errore di connessione al database Pokémon')
+        return render_template('index.html', sets=[], results=[], error='Errore di connessione al database Pokémon')
     cards = []
 
     for card in data.get('data', []):
@@ -41,7 +52,35 @@ def search():
             'prezzo_stimato': market_price
         })
 
-    return render_template('index.html', results=cards)
+    return render_template('index.html', sets=[], results=cards)
+
+@app.route('/set/<set_id>', methods=['GET'])
+def get_set_cards(set_id):
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(f"https://api.pokemontcg.io/v2/cards?q=set.id:{set_id}&orderBy=number", headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+    else:
+        print(f"Errore di connessione: {response.status_code}")
+        print(response.text)
+        return render_template('index.html', sets=[], results=[], error='Errore di connessione al database Pokémon')
+    cards = []
+
+    for card in data.get('data', []):
+        name = card.get('name', '')
+        id_set = card.get('set', {}).get('id', '')
+        image_url = card.get('images', {}).get('small', '')
+        market_price = card.get('tcgplayer', {}).get('prices', {}).get('market', {}).get('price', 'N/A')
+
+        cards.append({
+            'nome_carta': name,
+            'id_set': id_set,
+            'immagine_url': image_url,
+            'prezzo_stimato': market_price
+        })
+
+    return render_template('index.html', sets=[], results=cards)
 
 if __name__ == "__main__":
     with app.app_context():

@@ -6,14 +6,30 @@
     <title>Il mio Pokédex di Carte</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-100">
-    <div class="container mx-auto p-4">
-        <h1 class="text-4xl font-bold text-center mt-10">Il mio Pokédex di Carte</h1>
-        <form class="mt-10 flex justify-center" method="GET" action="/search">
+<body class="bg-gray-100 h-screen flex">
+    <aside class="w-72 bg-gray-800 text-white h-screen overflow-y-auto">
+        <h2 class="text-2xl font-bold p-4">Set di Carte</h2>
+        <ul>
+            {% for set in sets %}
+            <li class="p-2 hover:bg-gray-700 cursor-pointer" onclick="window.location.href='/set/{{ set.id }}'">
+                {{ set.name }}
+            </li>
+            {% endfor %}
+        </ul>
+    </aside>
+    <main class="flex-1 p-4">
+        <h1 class="text-4xl font-bold mb-10">Il mio Pokédex di Carte</h1>
+        <form class="mb-10 flex justify-center" method="GET" action="/search">
             <input type="text" name="query" class="border border-gray-300 rounded-l-md py-2 px-4 w-96" placeholder="Inserisci il nome della carta">
             <button type="submit" class="bg-blue-500 text-white rounded-r-md py-2 px-4">Cerca</button>
         </form>
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-10" id="results">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="results">
+            {% if error %}
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                <strong class="font-bold">Errore:</strong>
+                <span class="block sm:inline">{{ error }}</span>
+            </div>
+            {% endif %}
             {% for card in results %}
             <div class="bg-white rounded-lg shadow-md overflow-hidden">
                 <img src="{{ card.immagine_url }}" alt="{{ card.nome_carta }}" class="w-full h-48 object-cover">
@@ -25,6 +41,6 @@
             </div>
             {% endfor %}
         </div>
-    </div>
+    </main>
 </body>
 </html>
