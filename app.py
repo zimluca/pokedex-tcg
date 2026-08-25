@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import requests
-from models import db, Card
+from models import db, Card, CollectedCard
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///collezione.db'
@@ -112,10 +112,10 @@ def get_set_cards(set_id):
 @app.route('/api/collection/add', methods=['POST'])
 def add_to_collection():
     data = request.json
-    card = Card(
-        card_id=data['card_id'],
+    card = CollectedCard(
+        api_card_id=data['card_id'],
         name=data['name'],
-        set_id=data['set_id'],
+        set_name=data['set_id'],
         price=data['price']
     )
     db.session.add(card)
@@ -125,7 +125,7 @@ def add_to_collection():
 @app.route('/api/collection/remove', methods=['POST'])
 def remove_from_collection():
     data = request.json
-    card = Card.query.filter_by(card_id=data['card_id']).first()
+    card = CollectedCard.query.filter_by(api_card_id=data['card_id']).first()
     if card:
         db.session.delete(card)
         db.session.commit()
@@ -135,8 +135,8 @@ def remove_from_collection():
 
 @app.route('/api/collection', methods=['GET'])
 def get_collection():
-    cards = Card.query.all()
-    return jsonify([{'card_id': card.card_id, 'name': card.name, 'set_id': card.set_id, 'price': card.price} for card in cards]), 200
+    cards = CollectedCard.query.all()
+    return jsonify([{'api_card_id': card.api_card_id, 'name': card.name, 'set_name': card.set_name, 'price': card.price} for card in cards]), 200
 
 if __name__ == "__main__":
     with app.app_context():
