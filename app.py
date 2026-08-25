@@ -78,13 +78,20 @@ def get_set_cards(set_id):
         name = card.get('name', '')
         id_set = card.get('set', {}).get('id', '')
         image_url = card.get('images', {}).get('small', '')
-        market_price = card.get('tcgplayer', {}).get('prices', {}).get('market', {}).get('price', 'N/A')
+        cardmarket = card.get('cardmarket', {})
+        if cardmarket:
+            trend_price = cardmarket.get('prices', {}).get('trendPrice', cardmarket.get('prices', {}).get('averageSellPrice', 'N/A'))
+            cardmarket_url = cardmarket.get('url', '#')
+        else:
+            trend_price = 'N/A'
+            cardmarket_url = '#'
 
         cards.append({
             'nome_carta': name,
             'id_set': id_set,
             'immagine_url': image_url,
-            'prezzo_stimato': market_price
+            'prezzo_stimato': trend_price,
+            'cardmarket_url': cardmarket_url
         })
 
     return render_template('index.html', sets=[], results=cards)
