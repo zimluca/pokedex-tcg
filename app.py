@@ -1,26 +1,32 @@
 from flask import Flask, render_template, request, jsonify
 import requests
-from models import db
+from models import db, Card
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///pokemon.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///collezione.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
+sets_cache = None
+
 def get_all_sets():
+    global sets_cache
+    if sets_cache is not None:
+        return sets_cache
+
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get("https://api.pokemontcg.io/v2/sets", headers=headers)
     
     if response.status_code == 200:
         data = response.json()
-        sets = sorted(data.get('data', []), key=lambda x: x.get('releaseDate', ''), reverse=True)
-        print(f"Set scaricati: {len(sets)}")
+        sets_cache = sorted(data.get('data', []), key=lambda x: x.get('releaseDate', ''), reverse=True)
+        print(f"Set scaricati: {len(sets_cache)}")
     else:
         print(f"Errore di connessione: {response.status_code}")
         print(response.text)
-        sets = []
+        sets_cache = []
 
-    return sets
+    return sets_cache
 
 @app.route('/')
 def index():
@@ -102,6 +108,35 @@ def get_set_cards(set_id):
         })
 
     return render_template('index.html', sets=sets, results=cards)
+
+@app.route('/api/collection/add', methods=['POST'])
+def add_to_collection():
+    data = request.json
+    card = Card(
+        card_id=data['card_id'],
+        name=data['name'],
+        set_id=data['set_id'],
+        price=data['price']
+    )
+    db.session.add(card)
+    db.session.commit()
+    return jsonify({"message": "Carta aggiunta con successo"}), 200
+
+@app.route('/api/collection/remove', methods=['POST'])
+def remove_from_collection():
+    data = request.json
+    card = Card.query.filter_by(card_id=data['card_id']).first()
+    if card:
+        db.session.delete(card)
+        db.session.commit()
+        return jsonify({"message": "Carta rimossa con successo"}), 200
+    else:
+        return jsonify({"message": "Carta non trovata"}), 404
+
+@app.route('/api/collection', methods=['GET'])
+def get_collection():
+    cards = Card.query.all()
+    return jsonify([{'card_id': card.card_id, 'name': card.name, 'set_id': card.set_id, 'price': card.price} for card in cards]), 200
 
 if __name__ == "__main__":
     with app.app_context():
