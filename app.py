@@ -20,7 +20,7 @@ def index():
         print(response.text)
         sets = []
 
-    return render_template('index.html', sets=sets, results=[])
+    return render_template('index.html', sets=sets, results=[], total_value=0.00)
 
 @app.route('/search', methods=['GET'])
 def search():
