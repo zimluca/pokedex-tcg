@@ -76,7 +76,7 @@ def search():
             'cardmarket_url': cardmarket_url
         })
 
-    return render_template('index.html', sets=sets, results=cards, current_set_id=set_id)
+    return render_template('index.html', sets=sets, results=cards)
 @app.route('/set/<set_id>', methods=['GET'])
 def get_set_cards(set_id):
     sets = get_all_sets()
