@@ -30,7 +30,8 @@ def get_all_sets():
 @app.route('/')
 def index():
     sets = get_all_sets()
-    return render_template('index.html', sets=sets, results=[], total_value=0.00)
+    total_value = sum(card.price for card in CollectedCard.query.all())
+    return render_template('index.html', sets=sets, results=[], total_value=total_value)
 
 @app.route('/search', methods=['GET'])
 def search():
@@ -75,7 +76,7 @@ def search():
             'cardmarket_url': cardmarket_url
         })
 
-    return render_template('index.html', sets=sets, results=cards)
+    return render_template('index.html', sets=sets, results=cards, current_set_id=set_id)
 @app.route('/set/<set_id>', methods=['GET'])
 def get_set_cards(set_id):
     sets = get_all_sets()
@@ -96,7 +97,9 @@ def get_set_cards(set_id):
         image_url = card.get('images', {}).get('small', '')
         cardmarket = card.get('cardmarket', {})
         if cardmarket:
-            trend_price = cardmarket.get('prices', {}).get('trendPrice', cardmarket.get('prices', {}).get('averageSellPrice', 'N/A'))
+            prices = cardmarket.get('prices', {})
+            trend_price = prices.get('trendPrice') or prices.get('averageSellPrice') or prices.get('lowPrice') or prices.get('1DayAverage') or 0.0
+            trend_price = float(trend_price)
             cardmarket_url = cardmarket.get('url', '#')
         else:
             trend_price = 'N/A'

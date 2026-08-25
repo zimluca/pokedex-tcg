@@ -16,7 +16,7 @@
         <p class="text-lg font-bold mb-2">Valore Totale Collezione: € {{ total_value }}</p>
         <ul>
             {% for set in sets %}
-            <li class="p-2 hover:bg-gray-700 cursor-pointer" onclick="window.location.href='/set/{{ set.id }}'">
+            <li class="p-2 hover:bg-gray-700 cursor-pointer {% if set.id == current_set_id %}bg-blue-800 text-white border-l-4 border-blue-400{% endif %}" onclick="window.location.href='/set/{{ set.id }}'">
                 <img src="{{ set.images.symbol }}" alt="{{ set.name }} Logo" class="h-8 w-8 inline-block mr-2">
                 {{ set.name }} - Valore: € 0.00
             </li>
