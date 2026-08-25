@@ -7,26 +7,32 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///pokemon.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
-@app.route('/')
-def index():
+def get_all_sets():
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get("https://api.pokemontcg.io/v2/sets", headers=headers)
     
     if response.status_code == 200:
         data = response.json()
         sets = sorted(data.get('data', []), key=lambda x: x.get('releaseDate', ''), reverse=True)
+        print(f"Set scaricati: {len(sets)}")
     else:
         print(f"Errore di connessione: {response.status_code}")
         print(response.text)
         sets = []
 
+    return sets
+
+@app.route('/')
+def index():
+    sets = get_all_sets()
     return render_template('index.html', sets=sets, results=[], total_value=0.00)
 
 @app.route('/search', methods=['GET'])
 def search():
     query = request.args.get('query', '')
+    sets = get_all_sets()
     if not query:
-        return render_template('index.html', sets=[], results=[])
+        return render_template('index.html', sets=sets, results=[])
 
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get(f"https://api.pokemontcg.io/v2/cards?q=name:{query}", headers=headers)
@@ -36,7 +42,7 @@ def search():
     else:
         print(f"Errore di connessione: {response.status_code}")
         print(response.text)
-        return render_template('index.html', sets=[], results=[], error='Errore di connessione al database Pokémon')
+        return render_template('index.html', sets=sets, results=[], error='Errore di connessione al database Pokémon')
     cards = []
 
     for card in data.get('data', []):
@@ -59,10 +65,11 @@ def search():
             'cardmarket_url': cardmarket_url
         })
 
-    return render_template('index.html', sets=[], results=cards)
+    return render_template('index.html', sets=sets, results=cards)
 
 @app.route('/set/<set_id>', methods=['GET'])
 def get_set_cards(set_id):
+    sets = get_all_sets()
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get(f"https://api.pokemontcg.io/v2/cards?q=set.id:{set_id}&orderBy=number", headers=headers)
     
@@ -71,7 +78,7 @@ def get_set_cards(set_id):
     else:
         print(f"Errore di connessione: {response.status_code}")
         print(response.text)
-        return render_template('index.html', sets=[], results=[], error='Errore di connessione al database Pokémon')
+        return render_template('index.html', sets=sets, results=[], error='Errore di connessione al database Pokémon')
     cards = []
 
     for card in data.get('data', []):
@@ -94,7 +101,7 @@ def get_set_cards(set_id):
             'cardmarket_url': cardmarket_url
         })
 
-    return render_template('index.html', sets=[], results=cards)
+    return render_template('index.html', sets=sets, results=cards)
 
 if __name__ == "__main__":
     with app.app_context():
