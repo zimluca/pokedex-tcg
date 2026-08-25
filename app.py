@@ -21,12 +21,11 @@ def get_all_sets():
         data = response.json()
         sets_cache = sorted(data.get('data', []), key=lambda x: x.get('releaseDate', ''), reverse=True)
         print(f"Set scaricati: {len(sets_cache)}")
+        return sets_cache
     else:
         print(f"Errore di connessione: {response.status_code}")
-        print(response.text)
-        sets_cache = []
-
-    return sets_cache
+        sets_cache = None  # IL FIX E' QUI: Mettiamo None così al prossimo refresh riprova!
+        return []
 
 @app.route('/')
 def index():
@@ -52,27 +51,31 @@ def search():
     cards = []
 
     for card in data.get('data', []):
+        card_id = card.get('id', '')  # FIX 1: Aggiunto l'ID univoco della carta
         name = card.get('name', '')
         id_set = card.get('set', {}).get('id', '')
         image_url = card.get('images', {}).get('small', '')
+        
         cardmarket = card.get('cardmarket', {})
         if cardmarket:
-            trend_price = cardmarket.get('prices', {}).get('trendPrice', cardmarket.get('prices', {}).get('averageSellPrice', 'N/A'))
+            prices = cardmarket.get('prices', {})
+            # Prende il trendPrice, se non c'è prende l'average, se non c'è mette 0.0
+            trend_price = prices.get('trendPrice') or prices.get('averageSellPrice') or 0.0
             cardmarket_url = cardmarket.get('url', '#')
         else:
-            trend_price = 'N/A'
+            trend_price = 0.0  # FIX 2: Usiamo 0.0 invece di 'N/A' per non far crashare SQLite
             cardmarket_url = '#'
 
         cards.append({
+            'card_id': card_id,
             'nome_carta': name,
             'id_set': id_set,
             'immagine_url': image_url,
-            'prezzo_stimato': trend_price,
+            'prezzo_stimato': float(trend_price),
             'cardmarket_url': cardmarket_url
         })
 
     return render_template('index.html', sets=sets, results=cards)
-
 @app.route('/set/<set_id>', methods=['GET'])
 def get_set_cards(set_id):
     sets = get_all_sets()
