@@ -145,7 +145,7 @@ def format_card(card):
     # Debug: stampa se il prezzo è 0 per capire il problema
     if trend_price == 0:
         card_name = card.get('name', 'Unknown')
-        print(f"⚠️ Prezzo 0 per '{card_name}' - Cardmarket: {bool(cardmarket)}, TCGPlayer: {bool(tcgplayer)}")
+        print(f"[DEBUG] Prezzo 0 per '{card_name}' - Cardmarket: {bool(cardmarket)}, TCGPlayer: {bool(tcgplayer)}")
         if cardmarket:
             print(f"   Cardmarket prices: {cardmarket.get('prices', {})}")
         if tcgplayer:
