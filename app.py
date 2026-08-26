@@ -6,10 +6,11 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_login import LoginManager, login_required, current_user
 import requests
 
-from models import db, User, Card, CollectedCard, PriceCache
+from models import db, User, Card, CollectedCard, PriceCache, UserPreferences
 from scraper import scrape_cardmarket_price, scrape_tcgplayer_price, scrape_ebay_price
 from config import Config
 from auth import auth_bp
+from price_updater import start_price_updater
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -73,8 +74,52 @@ def api_get(url, params=None, max_retries=2):
     return None
 
 
-def get_all_sets():
+def get_user_language():
+    """Ottiene la lingua preferita dell'utente corrente."""
+    if not current_user.is_authenticated:
+        return None
+    
+    prefs = UserPreferences.query.filter_by(user_id=current_user.id).first()
+    return prefs.preferred_language if prefs else None
+
+
+def get_all_sets(language_filter=None):
+    """Ottiene tutti i set, opzionalmente filtrati per lingua."""
     global sets_cache
+    
+    # Se c'è un filtro lingua, non usare la cache globale
+    if language_filter:
+        print(f"[API] Scaricamento set per lingua: {language_filter}")
+        response = api_get(f"{POKEMON_API_BASE}/sets")
+        if response is None:
+            print("[API] ERRORE: Impossibile scaricare i set")
+            return []
+        
+        data = response.json()
+        all_sets = data.get('data', [])
+        
+        # Filtra per lingua (alcuni set hanno il campo 'printedTotal' che indica la lingua)
+        # Per ora filtriamo per nome del set che contiene indicatori di lingua
+        filtered_sets = []
+        for s in all_sets:
+            set_name = s.get('name', '').lower()
+            # Logica di filtro base - può essere migliorata
+            if language_filter == 'en' and not any(x in set_name for x in ['japanese', 'italiano', 'français']):
+                filtered_sets.append(s)
+            elif language_filter == 'it' and 'italiano' in set_name:
+                filtered_sets.append(s)
+            elif language_filter == 'fr' and 'français' in set_name:
+                filtered_sets.append(s)
+            elif language_filter == 'de' and 'deutsch' in set_name:
+                filtered_sets.append(s)
+            elif language_filter == 'ja' and 'japanese' in set_name:
+                filtered_sets.append(s)
+            elif language_filter == 'es' and 'español' in set_name:
+                filtered_sets.append(s)
+        
+        return sorted(filtered_sets, key=lambda x: x.get('releaseDate', ''), reverse=True)
+    
+    # Senza filtro, usa la cache
     if sets_cache is not None:
         return sets_cache
 
@@ -82,7 +127,7 @@ def get_all_sets():
     response = api_get(f"{POKEMON_API_BASE}/sets")
     if response is None:
         print("[API] ERRORE: Impossibile scaricare i set")
-        sets_cache = None  # al prossimo giro riprova
+        sets_cache = None
         return []
 
     data = response.json()
@@ -140,9 +185,9 @@ def extract_tcgplayer_price(tcgplayer):
 
 
 def get_cached_price(card_id):
-    """Recupera il prezzo dalla cache se disponibile e non obsoleto."""
+    """Recupera il prezzo dalla cache se disponibile e non obsoleto (2 ore)."""
     cached = PriceCache.query.filter_by(card_id=card_id).first()
-    if cached and not cached.is_stale(days=7):
+    if cached and not cached.is_stale(hours=2):
         return cached.price, cached.url, cached.source
     return None, None, None
 
@@ -175,9 +220,9 @@ def cache_price(card_id, card_name, set_name, price, url, source):
         print(f"[CACHE] Errore nel salvataggio: {e}")
 
 
-def extract_price_info(cardmarket, tcgplayer=None, card_id=None, card_name=None, set_name=None, enable_scraping=False):
+def extract_price_info(cardmarket, tcgplayer=None, card_id=None, card_name=None, set_name=None, enable_scraping=True):
     """Restituisce (prezzo, url) usando il primo prezzo disponibile.
-    Priorità: Cardmarket API → TCGPlayer API → Cache → Scraping (se abilitato) → 0.0
+    Priorità: Cardmarket API → TCGPlayer API → Cache → Scraping (sempre attivo) → 0.0
     Gestisce in modo sicuro valori None, stringhe e numeri."""
     
     cardmarket_price = 0.0
@@ -219,8 +264,8 @@ def extract_price_info(cardmarket, tcgplayer=None, card_id=None, card_name=None,
             print(f"[CACHE] Prezzo da cache per '{card_name}': €{cached_price:.2f} ({cached_source})")
             return cached_price, cached_url if cached_url else '#'
     
-    # 4. Scraping come ultimo fallback (SOLO se esplicitamente abilitato)
-    if enable_scraping and card_name and set_name:
+    # 4. Scraping come ultimo fallback (sempre attivo per prezzi mancanti)
+    if card_name and set_name:
         print(f"[SCRAPER] Tentativo scraping per '{card_name}' ({set_name})...")
         
         # Prova eBay scraping (PRIORITÀ: prezzi reali di vendite recenti)
@@ -255,27 +300,21 @@ def extract_price_info(cardmarket, tcgplayer=None, card_id=None, card_name=None,
     return 0.0, '#'
 
 
-def format_card(card, enable_scraping=False):
-    """Formatta i dati della carta dall'API in un dizionario semplificato.
-    
-    Args:
-        card: Dati carta dall'API
-        enable_scraping: Se True, abilita lo scraping per carte senza prezzo (LENTO!)
-    """
+def format_card(card):
+    """Formatta i dati della carta dall'API in un dizionario semplificato."""
     cardmarket = card.get('cardmarket')
     tcgplayer = card.get('tcgplayer')
     card_id = card.get('id', '')
     card_name = card.get('name', '')
     set_name = card.get('set', {}).get('id', '')
     
-    # Estrai prezzo e URL (con possibile scraping)
+    # Estrai prezzo e URL (scraping sempre attivo)
     trend_price, price_url = extract_price_info(
         cardmarket, 
         tcgplayer,
         card_id=card_id,
         card_name=card_name,
-        set_name=set_name,
-        enable_scraping=enable_scraping
+        set_name=set_name
     )
     
     # Determina se il prezzo è disponibile o meno
@@ -381,7 +420,10 @@ def calculate_collection_stats(user_id=None):
 def render_cards_page(cards=None, current_set_id=None, error=None):
     """Funzione helper per renderizzare la pagina con le carte.
     Elimina duplicazione di codice tra le varie rotte."""
-    sets = get_all_sets()
+    
+    # Ottieni lingua preferita e filtra i set
+    user_language = get_user_language()
+    sets = get_all_sets(language_filter=user_language)
     
     # Calcola statistiche solo se l'utente è autenticato
     if current_user.is_authenticated:
@@ -397,7 +439,8 @@ def render_cards_page(cards=None, current_set_id=None, error=None):
         set_values=set_values,
         current_set_id=current_set_id,
         error=error,
-        user=current_user
+        user=current_user,
+        user_language=user_language or ''
     )
 
 
@@ -409,7 +452,6 @@ def index():
 @app.route('/search', methods=['GET'])
 def search():
     query = request.args.get('query', '').strip()
-    enable_scraping = request.args.get('scrape', '').lower() == 'true'
     
     if not query:
         return render_cards_page()
@@ -418,29 +460,22 @@ def search():
     if raw_cards is None:
         return render_cards_page(error='Errore di connessione al database Pokémon')
 
-    # ATTENZIONE: enable_scraping=True è LENTO! Usa solo se necessario
-    cards = sort_by_number([format_card(c, enable_scraping=enable_scraping) for c in raw_cards])
+    cards = sort_by_number([format_card(c) for c in raw_cards])
     return render_cards_page(cards=cards)
 
 
 @app.route('/set/<set_id>', methods=['GET'])
 def get_set_cards(set_id):
-    enable_scraping = request.args.get('scrape', '').lower() == 'true'
-    
-    # Usa la cache se disponibile E non è richiesto scraping
-    if set_id in set_cards_cache and not enable_scraping:
+    # Usa la cache se disponibile
+    if set_id in set_cards_cache:
         return render_cards_page(cards=set_cards_cache[set_id], current_set_id=set_id)
 
     raw_cards = fetch_all_cards(f"set.id:{set_id}")
     if raw_cards is None:
         return render_cards_page(current_set_id=set_id, error='Errore di connessione al database Pokémon')
 
-    # ATTENZIONE: enable_scraping=True è MOLTO LENTO per set interi!
-    cards = sort_by_number([format_card(c, enable_scraping=enable_scraping) for c in raw_cards])
-    
-    # Salva in cache solo se non è stato fatto scraping
-    if not enable_scraping:
-        set_cards_cache[set_id] = cards
+    cards = sort_by_number([format_card(c) for c in raw_cards])
+    set_cards_cache[set_id] = cards
     
     return render_cards_page(cards=cards, current_set_id=set_id)
 
@@ -479,22 +514,31 @@ def add_to_collection():
     except (ValueError, TypeError):
         price = 0.0
 
-    card = CollectedCard(
-        user_id=current_user.id,
-        api_card_id=card_id,
-        name=data.get('name', 'Sconosciuta')[:100],  # Limita lunghezza
-        set_name=data.get('set_id', 'Sconosciuto')[:100],
-        price=price
-    )
-    
     try:
+        card = CollectedCard(
+            user_id=current_user.id,
+            api_card_id=card_id,
+            name=data.get('name', 'Sconosciuta')[:100],  # Limita lunghezza
+            set_name=data.get('set_id', 'Sconosciuto')[:100],
+            price=price
+        )
+        
+        print(f"[API] Tentativo aggiunta carta: user_id={current_user.id}, card_id={card_id}, name={card.name}, set={card.set_name}, price={price}")
+        
         db.session.add(card)
+        db.session.flush()  # Forza la validazione prima del commit
         db.session.commit()
-        print(f"[API] Carta aggiunta con successo: {card_id} per user {current_user.id}")
+        
+        print(f"[API] ✓ Carta aggiunta con successo: {card_id} per user {current_user.id}")
         return jsonify({"message": "Carta aggiunta con successo", "price": price}), 200
+        
     except Exception as e:
         db.session.rollback()
-        print(f"[API] ERRORE nell'aggiunta della carta: {type(e).__name__}: {str(e)}")
+        print(f"[API] ✗ ERRORE nell'aggiunta della carta:")
+        print(f"  Tipo errore: {type(e).__name__}")
+        print(f"  Messaggio: {str(e)}")
+        print(f"  User ID: {current_user.id}")
+        print(f"  Card ID: {card_id}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Errore nel salvataggio: {str(e)}"}), 500
@@ -598,6 +642,38 @@ def get_collection_stats():
         return jsonify({"error": "Errore nel recupero delle statistiche"}), 500
 
 
+@app.route('/api/preferences/language', methods=['POST'])
+@login_required
+def set_language_preference():
+    """Imposta la lingua preferita dell'utente."""
+    data = request.json
+    language = data.get('language', 'en')
+    
+    # Valida la lingua
+    valid_languages = ['', 'en', 'it', 'fr', 'de', 'es', 'ja']
+    if language not in valid_languages:
+        return jsonify({"error": "Lingua non valida"}), 400
+    
+    try:
+        prefs = UserPreferences.query.filter_by(user_id=current_user.id).first()
+        if prefs:
+            prefs.preferred_language = language if language else 'en'
+        else:
+            prefs = UserPreferences(
+                user_id=current_user.id,
+                preferred_language=language if language else 'en'
+            )
+            db.session.add(prefs)
+        
+        db.session.commit()
+        print(f"[API] Lingua aggiornata per user {current_user.id}: {language}")
+        return jsonify({"message": "Lingua aggiornata", "language": language}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"[API] Errore nell'aggiornamento lingua: {e}")
+        return jsonify({"error": "Errore nell'aggiornamento"}), 500
+
+
 def preload_popular_sets():
     """Pre-carica in cache i set più recenti per velocizzare il primo accesso."""
     with app.app_context():
@@ -620,6 +696,9 @@ def preload_popular_sets():
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+        
+        # Avvia il daemon di aggiornamento prezzi
+        start_price_updater()
         
         # Pre-carica i set popolari in un thread separato per non bloccare l'avvio
         import threading

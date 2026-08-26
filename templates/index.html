@@ -33,33 +33,42 @@
         
         <!-- Form di ricerca -->
         <div class="px-4 mb-4">
-            <form class="flex flex-col gap-2" method="GET" action="/search">
-                <div class="flex">
-                    <input 
-                        type="text" 
-                        name="query" 
-                        class="border border-gray-300 rounded-l-md py-2 px-4 w-full text-gray-800" 
-                        placeholder="Cerca carta..."
-                        required
-                    >
-                    <button 
-                        type="submit" 
-                        class="bg-blue-500 hover:bg-blue-600 text-white rounded-r-md py-2 px-4 transition-colors"
-                    >
-                        Cerca
-                    </button>
-                </div>
-                <label class="flex items-center text-xs text-gray-300 cursor-pointer">
-                    <input 
-                        type="checkbox" 
-                        name="scrape" 
-                        value="true"
-                        class="mr-2"
-                    >
-                    <span>Abilita scraping prezzi (lento)</span>
-                </label>
+            <form class="flex" method="GET" action="/search">
+                <input 
+                    type="text" 
+                    name="query" 
+                    class="border border-gray-300 rounded-l-md py-2 px-4 w-full text-gray-800" 
+                    placeholder="Cerca carta..."
+                    required
+                >
+                <button 
+                    type="submit" 
+                    class="bg-blue-500 hover:bg-blue-600 text-white rounded-r-md py-2 px-4 transition-colors"
+                >
+                    Cerca
+                </button>
             </form>
         </div>
+        
+        <!-- Selezione lingua -->
+        {% if user.is_authenticated %}
+        <div class="px-4 mb-4">
+            <label class="text-xs text-gray-400 block mb-1">Lingua espansioni:</label>
+            <select 
+                id="language-selector" 
+                class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
+                onchange="changeLanguage(this.value)"
+            >
+                <option value="">Tutte le lingue</option>
+                <option value="en" {% if user_language == 'en' %}selected{% endif %}>English</option>
+                <option value="it" {% if user_language == 'it' %}selected{% endif %}>Italiano</option>
+                <option value="fr" {% if user_language == 'fr' %}selected{% endif %}>Français</option>
+                <option value="de" {% if user_language == 'de' %}selected{% endif %}>Deutsch</option>
+                <option value="es" {% if user_language == 'es' %}selected{% endif %}>Español</option>
+                <option value="ja" {% if user_language == 'ja' %}selected{% endif %}>日本語</option>
+            </select>
+        </div>
+        {% endif %}
         
         <!-- Valore totale collezione (solo se autenticato) -->
         {% if user.is_authenticated %}
@@ -218,6 +227,27 @@
     </main>
 
     <script>
+        /**
+         * Cambia la lingua preferita dell'utente
+         */
+        function changeLanguage(language) {
+            fetch('/api/preferences/language', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ language: language })
+            })
+            .then(response => response.json())
+            .then(data => {
+                showNotification('Lingua aggiornata', 'success');
+                // Ricarica la pagina per applicare il filtro
+                setTimeout(() => location.reload(), 500);
+            })
+            .catch(error => {
+                console.error('Errore:', error);
+                showNotification('Errore nell\'aggiornamento della lingua', 'error');
+            });
+        }
+        
         /**
          * Mostra l'indicatore di caricamento
          */

@@ -87,14 +87,28 @@ class PriceCache(db.Model):
     card_name = db.Column(db.String(100), nullable=False)
     set_name = db.Column(db.String(100), nullable=False)
     price = db.Column(db.Float, nullable=False, default=0.0)
-    source = db.Column(db.String(20), nullable=False)  # 'cardmarket', 'tcgplayer', 'manual'
+    source = db.Column(db.String(20), nullable=False)  # 'cardmarket', 'tcgplayer', 'ebay', 'manual'
     url = db.Column(db.String(500))
     scraped_at = db.Column(db.DateTime, nullable=False, default=db.func.now())
     
     def __repr__(self):
         return f'<PriceCache {self.card_name}: €{self.price} from {self.source}>'
     
-    def is_stale(self, days=7):
-        """Verifica se il prezzo in cache è vecchio (default: 7 giorni)."""
+    def is_stale(self, hours=2):
+        """Verifica se il prezzo in cache è vecchio (default: 2 ore)."""
         from datetime import datetime, timedelta
-        return datetime.now() - self.scraped_at > timedelta(days=days)
+        return datetime.now() - self.scraped_at > timedelta(hours=hours)
+
+
+class UserPreferences(db.Model):
+    """Preferenze utente (lingua, ecc.)."""
+    __tablename__ = 'user_preferences'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True, index=True)
+    preferred_language = db.Column(db.String(10), default='en')  # 'en', 'it', 'fr', 'de', 'es', 'ja'
+    
+    user = db.relationship('User', backref=db.backref('preferences', uselist=False))
+    
+    def __repr__(self):
+        return f'<UserPreferences user={self.user_id} lang={self.preferred_language}>'
