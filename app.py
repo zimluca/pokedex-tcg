@@ -32,7 +32,7 @@ def get_all_sets():
 def index():
     sets = get_all_sets()
     total_value = sum(card.price for card in CollectedCard.query.all())
-    return render_template('index.html', sets=sets, results=[], total_value=total_value)
+    return render_template('index.html', sets=sets, results=[], total_value=total_value, current_set_id=None)
 
 @app.route('/search', methods=['GET'])
 def search():
@@ -62,7 +62,7 @@ def search():
         if cardmarket:
             prices = cardmarket.get('prices', {})
             # Prende il trendPrice, se non c'è prende l'average, se non c'è mette 0.0
-            trend_price = prices.get('trendPrice') or prices.get('averageSellPrice') or 0.0
+            trend_price = float(trend_price)
             cardmarket_url = cardmarket.get('url', '#')
         else:
             trend_price = 0.0  # FIX 2: Usiamo 0.0 invece di 'N/A' per non far crashare SQLite
@@ -81,7 +81,7 @@ def search():
 
     cards.sort(key=lambda x: int(re.search(r'\d+', x['numero']).group()) if re.search(r'\d+', x['numero']) else 0)
     cards.sort(key=lambda x: int(re.search(r'\d+', x['numero']).group()) if re.search(r'\d+', x['numero']) else 0)
-    return render_template('index.html', sets=sets, results=cards)
+    return render_template('index.html', sets=sets, results=cards, current_set_id=set_id)
 @app.route('/set/<set_id>', methods=['GET'])
 def get_set_cards(set_id):
     sets = get_all_sets()
@@ -120,7 +120,7 @@ def get_set_cards(set_id):
             'numero': number
         })
 
-    return render_template('index.html', sets=sets, results=cards)
+    return render_template('index.html', sets=sets, results=cards, current_set_id=set_id)
 
 @app.route('/api/collection/add', methods=['POST'])
 def add_to_collection():
