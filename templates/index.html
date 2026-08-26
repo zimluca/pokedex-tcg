@@ -416,9 +416,24 @@
                 })
             })
             .then(response => {
+                // Gestisci redirect per utenti non autenticati
+                if (response.status === 401) {
+                    return response.json().then(data => {
+                        if (data.redirect) {
+                            showNotification('Devi effettuare il login per salvare le carte', 'error');
+                            setTimeout(() => {
+                                window.location.href = data.redirect;
+                            }, 1500);
+                        }
+                        throw new Error('Non autenticato');
+                    });
+                }
+                
                 if (!response.ok) {
                     return response.json().then(data => {
                         throw new Error(data.error || 'Errore nella richiesta');
+                    }).catch(() => {
+                        throw new Error('Errore nella richiesta');
                     });
                 }
                 return response.json();
@@ -457,7 +472,24 @@
                 body: JSON.stringify({ card_id: cardId })
             })
             .then(response => {
-                if (!response.ok) throw new Error('Errore nella richiesta');
+                // Gestisci redirect per utenti non autenticati
+                if (response.status === 401) {
+                    return response.json().then(data => {
+                        if (data.redirect) {
+                            showNotification('Devi effettuare il login', 'error');
+                            setTimeout(() => {
+                                window.location.href = data.redirect;
+                            }, 1500);
+                        }
+                        throw new Error('Non autenticato');
+                    });
+                }
+                
+                if (!response.ok) {
+                    return response.json().catch(() => {
+                        throw new Error('Errore nella richiesta');
+                    });
+                }
                 return response.json();
             })
             .then(data => {

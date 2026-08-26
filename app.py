@@ -21,6 +21,14 @@ login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
 login_manager.login_message = 'Effettua il login per accedere a questa pagina.'
 
+# Gestione personalizzata per richieste AJAX non autenticate
+@login_manager.unauthorized_handler
+def unauthorized():
+    """Gestisce le richieste non autenticate in modo appropriato per AJAX."""
+    if request.is_json or request.headers.get('Content-Type') == 'application/json':
+        return jsonify({"error": "Non autenticato", "redirect": url_for('auth.login')}), 401
+    return redirect(url_for('auth.login'))
+
 # Registra il blueprint di autenticazione
 app.register_blueprint(auth_bp, url_prefix='/auth')
 
