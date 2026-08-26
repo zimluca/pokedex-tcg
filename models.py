@@ -1,6 +1,35 @@
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import UserMixin
+from datetime import datetime
 
 db = SQLAlchemy()
+
+
+class User(UserMixin, db.Model):
+    """Modello per gli utenti autenticati."""
+    __tablename__ = 'users'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    google_id = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    email = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(100))
+    picture = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_login = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    
+    # Relazione con le carte possedute
+    collected_cards = db.relationship('CollectedCard', backref='owner', lazy=True, cascade='all, delete-orphan')
+    
+    def __repr__(self):
+        return f'<User {self.email}>'
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email': self.email,
+            'name': self.name,
+            'picture': self.picture
+        }
 
 
 class Card(db.Model):
@@ -17,17 +46,25 @@ class Card(db.Model):
 
 
 class CollectedCard(db.Model):
-    """Modello per le carte possedute dall'utente."""
+    """Modello per le carte possedute dall'utente.
+    Ogni carta è associata a un utente specifico."""
     __tablename__ = 'collected_cards'
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    api_card_id = db.Column(db.String(50), nullable=False, unique=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    api_card_id = db.Column(db.String(50), nullable=False, index=True)
     name = db.Column(db.String(100), nullable=False)
     set_name = db.Column(db.String(100), nullable=False)
     price = db.Column(db.Float, nullable=False, default=0.0)
+    added_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    
+    # Constraint: un utente non può avere la stessa carta due volte
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'api_card_id', name='unique_user_card'),
+    )
     
     def __repr__(self):
-        return f'<CollectedCard {self.api_card_id}: {self.name} - €{self.price}>'
+        return f'<CollectedCard user={self.user_id} {self.api_card_id}: {self.name} - €{self.price}>'
     
     def to_dict(self):
         """Converte il modello in dizionario per JSON."""
@@ -35,7 +72,8 @@ class CollectedCard(db.Model):
             'api_card_id': self.api_card_id,
             'name': self.name,
             'set_name': self.set_name,
-            'price': self.price
+            'price': self.price,
+            'added_at': self.added_at.isoformat() if self.added_at else None
         }
 
 

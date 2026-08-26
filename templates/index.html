@@ -9,7 +9,27 @@
 <body class="bg-gray-100 h-screen flex">
     <!-- Sidebar con lista set -->
     <aside class="w-72 bg-gray-800 text-white h-screen overflow-y-auto">
-        <h2 class="text-2xl font-bold p-4">Set di Carte</h2>
+        <div class="p-4 border-b border-gray-700">
+            <h2 class="text-2xl font-bold mb-3">Pokédex TCG</h2>
+            
+            <!-- Info utente / Login -->
+            {% if user.is_authenticated %}
+            <div class="flex items-center gap-3 bg-gray-700 rounded p-2">
+                {% if user.picture %}
+                <img src="{{ user.picture }}" alt="{{ user.name }}" class="w-10 h-10 rounded-full">
+                {% endif %}
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold truncate">{{ user.name or user.email }}</p>
+                    <a href="{{ url_for('auth.logout') }}" class="text-xs text-blue-300 hover:text-blue-100">Logout</a>
+                </div>
+            </div>
+            {% else %}
+            <a href="{{ url_for('auth.login') }}" class="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-2 px-4 rounded transition-colors">
+                <span class="font-semibold">Accedi con Google</span>
+            </a>
+            <p class="text-xs text-gray-400 mt-2 text-center">Accedi per salvare la tua collezione</p>
+            {% endif %}
+        </div>
         
         <!-- Form di ricerca -->
         <div class="px-4 mb-4">
@@ -41,12 +61,14 @@
             </form>
         </div>
         
-        <!-- Valore totale collezione -->
+        <!-- Valore totale collezione (solo se autenticato) -->
+        {% if user.is_authenticated %}
         <div class="px-4 mb-4">
             <p class="text-lg font-bold bg-green-700 rounded p-2 text-center">
                 Valore Totale: €{{ "%.2f"|format(total_value) }}
             </p>
         </div>
+        {% endif %}
         
         <!-- Lista set -->
         <ul>
@@ -140,7 +162,8 @@
                     </a>
                     {% endif %}
                     
-                    <!-- Checkbox possesso -->
+                    <!-- Checkbox possesso (solo se autenticato) -->
+                    {% if user.is_authenticated %}
                     <label class="flex items-center cursor-pointer mb-2">
                         <input 
                             type="checkbox" 
@@ -154,9 +177,14 @@
                         >
                         <span class="ml-2 text-sm font-medium text-gray-700">Possiedo questa carta</span>
                     </label>
+                    {% else %}
+                    <a href="{{ url_for('auth.login') }}" class="block text-center bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm py-2 px-3 rounded transition-colors">
+                        Accedi per salvare
+                    </a>
+                    {% endif %}
                     
-                    <!-- Input prezzo manuale (solo se prezzo non disponibile) -->
-                    {% if not card.prezzo_disponibile %}
+                    <!-- Input prezzo manuale (solo se prezzo non disponibile e autenticato) -->
+                    {% if user.is_authenticated and not card.prezzo_disponibile %}
                     <div class="mt-2 hidden" id="manual-price-{{ card.card_id }}">
                         <label class="text-xs text-gray-600 block mb-1">Inserisci prezzo manualmente (€):</label>
                         <input 
@@ -182,10 +210,12 @@
     </main>
 
     <script>
-        // Carica lo stato delle checkbox e i valori al caricamento della pagina
+        // Carica lo stato delle checkbox e i valori al caricamento della pagina (solo se autenticato)
         document.addEventListener('DOMContentLoaded', function() {
+            {% if user.is_authenticated %}
             loadCollectionState();
             updateCollectionValues();
+            {% endif %}
         });
 
         /**

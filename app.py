@@ -2,16 +2,33 @@ import os
 import re
 import time
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask_login import LoginManager, login_required, current_user
 import requests
 
-from models import db, Card, CollectedCard, PriceCache
+from models import db, User, Card, CollectedCard, PriceCache
 from scraper import scrape_cardmarket_price, scrape_tcgplayer_price
+from config import Config
+from auth import auth_bp
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///collezione.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config.from_object(Config)
 db.init_app(app)
+
+# Configurazione Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'auth.login'
+login_manager.login_message = 'Effettua il login per accedere a questa pagina.'
+
+# Registra il blueprint di autenticazione
+app.register_blueprint(auth_bp, url_prefix='/auth')
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    """Carica l'utente dalla sessione."""
+    return User.query.get(int(user_id))
 
 POKEMON_API_BASE = "https://api.pokemontcg.io/v2"
 REQUEST_TIMEOUT = 10  # secondi: evita che una richiesta lenta blocchi l'app
@@ -312,11 +329,18 @@ def sort_by_number(cards):
     return cards
 
 
-def calculate_collection_stats():
+def calculate_collection_stats(user_id=None):
     """Calcola statistiche della collezione: valore totale e valori per set.
+    Se user_id è None, usa l'utente corrente.
     Restituisce (total_value, set_values_dict)."""
     try:
-        collected_cards = CollectedCard.query.all()
+        if user_id is None and current_user.is_authenticated:
+            user_id = current_user.id
+        
+        if not user_id:
+            return 0.0, {}
+        
+        collected_cards = CollectedCard.query.filter_by(user_id=user_id).all()
         total_value = 0.0
         set_values = {}
         
@@ -340,7 +364,12 @@ def render_cards_page(cards=None, current_set_id=None, error=None):
     """Funzione helper per renderizzare la pagina con le carte.
     Elimina duplicazione di codice tra le varie rotte."""
     sets = get_all_sets()
-    total_value, set_values = calculate_collection_stats()
+    
+    # Calcola statistiche solo se l'utente è autenticato
+    if current_user.is_authenticated:
+        total_value, set_values = calculate_collection_stats()
+    else:
+        total_value, set_values = 0.0, {}
     
     return render_template(
         'index.html',
@@ -349,7 +378,8 @@ def render_cards_page(cards=None, current_set_id=None, error=None):
         total_value=total_value,
         set_values=set_values,
         current_set_id=current_set_id,
-        error=error
+        error=error,
+        user=current_user
     )
 
 
@@ -398,6 +428,7 @@ def get_set_cards(set_id):
 
 
 @app.route('/api/collection/add', methods=['POST'])
+@login_required
 def add_to_collection():
     data = request.json
     
@@ -409,8 +440,12 @@ def add_to_collection():
     if not card_id:
         return jsonify({"error": "ID carta non valido"}), 400
     
-    # Verifica se già presente
-    already_owned = CollectedCard.query.filter_by(api_card_id=card_id).first()
+    # Verifica se già presente per questo utente
+    already_owned = CollectedCard.query.filter_by(
+        user_id=current_user.id,
+        api_card_id=card_id
+    ).first()
+    
     if already_owned:
         return jsonify({"message": "Carta già presente in collezione"}), 200
 
@@ -424,6 +459,7 @@ def add_to_collection():
         price = 0.0
 
     card = CollectedCard(
+        user_id=current_user.id,
         api_card_id=card_id,
         name=data.get('name', 'Sconosciuta')[:100],  # Limita lunghezza
         set_name=data.get('set_id', 'Sconosciuto')[:100],
@@ -441,6 +477,7 @@ def add_to_collection():
 
 
 @app.route('/api/collection/update_price', methods=['POST'])
+@login_required
 def update_card_price():
     """Aggiorna il prezzo di una carta nella collezione."""
     data = request.json
@@ -461,7 +498,11 @@ def update_card_price():
     except (ValueError, TypeError):
         return jsonify({"error": "Prezzo non valido"}), 400
     
-    card = CollectedCard.query.filter_by(api_card_id=card_id).first()
+    card = CollectedCard.query.filter_by(
+        user_id=current_user.id,
+        api_card_id=card_id
+    ).first()
+    
     if not card:
         return jsonify({"error": "Carta non trovata in collezione"}), 404
     
@@ -476,6 +517,7 @@ def update_card_price():
 
 
 @app.route('/api/collection/remove', methods=['POST'])
+@login_required
 def remove_from_collection():
     data = request.json
     
@@ -487,7 +529,11 @@ def remove_from_collection():
     if not card_id:
         return jsonify({"error": "ID carta non valido"}), 400
     
-    card = CollectedCard.query.filter_by(api_card_id=card_id).first()
+    card = CollectedCard.query.filter_by(
+        user_id=current_user.id,
+        api_card_id=card_id
+    ).first()
+    
     if not card:
         return jsonify({"message": "Carta non trovata"}), 404
     
@@ -502,10 +548,11 @@ def remove_from_collection():
 
 
 @app.route('/api/collection', methods=['GET'])
+@login_required
 def get_collection():
-    """Restituisce tutte le carte nella collezione dell'utente."""
+    """Restituisce tutte le carte nella collezione dell'utente corrente."""
     try:
-        cards = CollectedCard.query.all()
+        cards = CollectedCard.query.filter_by(user_id=current_user.id).all()
         return jsonify([card.to_dict() for card in cards]), 200
     except Exception as e:
         print(f"Errore nel recupero della collezione: {e}")
@@ -513,10 +560,11 @@ def get_collection():
 
 
 @app.route('/api/collection/stats', methods=['GET'])
+@login_required
 def get_collection_stats():
-    """Restituisce statistiche della collezione: valore totale e valori per set."""
+    """Restituisce statistiche della collezione dell'utente corrente."""
     try:
-        total_value, set_values = calculate_collection_stats()
+        total_value, set_values = calculate_collection_stats(current_user.id)
         return jsonify({
             'total_value': total_value,
             'set_values': set_values
