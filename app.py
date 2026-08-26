@@ -113,11 +113,15 @@ def extract_tcgplayer_price(tcgplayer):
 
 def extract_price_info(cardmarket, tcgplayer=None):
     """Restituisce (prezzo, url) usando il primo prezzo disponibile.
-    Priorità: Cardmarket (EUR) -> TCGPlayer (USD) -> 0.0
+    Priorità: Cardmarket (EUR) con prezzo valido -> TCGPlayer (USD) -> Cardmarket URL -> 0.0
     Gestisce in modo sicuro valori None, stringhe e numeri."""
+    
+    cardmarket_price = 0.0
+    cardmarket_url = '#'
     
     # Prova prima con Cardmarket (Europa)
     if cardmarket and isinstance(cardmarket, dict):
+        cardmarket_url = cardmarket.get('url', '#')
         prices = cardmarket.get('prices', {})
         if isinstance(prices, dict):
             # Cerca in TUTTI i campi prezzo disponibili di Cardmarket
@@ -131,19 +135,24 @@ def extract_price_info(cardmarket, tcgplayer=None):
                     try:
                         price = float(value)
                         if price > 0:
-                            return price, cardmarket.get('url', '#')
+                            cardmarket_price = price
+                            break
                     except (ValueError, TypeError):
                         continue
     
-    # Fallback su TCGPlayer (USA) se Cardmarket non ha prezzi validi
+    # Se Cardmarket ha un prezzo valido, usalo
+    if cardmarket_price > 0:
+        return cardmarket_price, cardmarket_url
+    
+    # Altrimenti prova con TCGPlayer (USA)
     if tcgplayer:
         tcg_price, tcg_url = extract_tcgplayer_price(tcgplayer)
         if tcg_price > 0:
             return tcg_price, tcg_url if tcg_url else '#'
     
-    # Nessun prezzo disponibile - restituisci URL se disponibile
-    if cardmarket and isinstance(cardmarket, dict):
-        return 0.0, cardmarket.get('url', '#')
+    # Nessun prezzo disponibile - restituisci URL Cardmarket se disponibile, altrimenti TCGPlayer
+    if cardmarket_url != '#':
+        return 0.0, cardmarket_url
     if tcgplayer and isinstance(tcgplayer, dict):
         return 0.0, tcgplayer.get('url', '#')
     
@@ -158,14 +167,24 @@ def format_card(card):
     # Estrai prezzo e URL
     trend_price, price_url = extract_price_info(cardmarket, tcgplayer)
     
-    # Debug: stampa se il prezzo è 0 per capire il problema
+    # Debug: stampa dettagli sui prezzi per capire il problema
     if trend_price == 0:
         card_name = card.get('name', 'Unknown')
-        print(f"[DEBUG] Prezzo 0 per '{card_name}' - Cardmarket: {bool(cardmarket)}, TCGPlayer: {bool(tcgplayer)}")
+        print(f"[DEBUG] Prezzo 0 per '{card_name}'")
         if cardmarket:
-            print(f"   Cardmarket prices: {cardmarket.get('prices', {})}")
+            cm_prices = cardmarket.get('prices', {})
+            print(f"   Cardmarket presente: {bool(cardmarket)}, Prezzi: {cm_prices if cm_prices else 'Nessuno'}")
+        else:
+            print(f"   Cardmarket: Non presente")
         if tcgplayer:
-            print(f"   TCGPlayer prices: {tcgplayer.get('prices', {})}")
+            tcg_prices = tcgplayer.get('prices', {})
+            print(f"   TCGPlayer presente: {bool(tcgplayer)}, Prezzi: {tcg_prices if tcg_prices else 'Nessuno'}")
+        else:
+            print(f"   TCGPlayer: Non presente")
+    elif trend_price > 0:
+        # Log positivo per confermare che i prezzi vengono estratti
+        source = "Cardmarket" if cardmarket and cardmarket.get('prices') else "TCGPlayer"
+        print(f"[INFO] Prezzo trovato per '{card.get('name', 'Unknown')}': €{trend_price:.2f} (fonte: {source})")
     
     return {
         'card_id': card.get('id', ''),
