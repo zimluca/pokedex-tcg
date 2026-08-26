@@ -65,7 +65,7 @@ def get_all_sets():
 
 def extract_tcgplayer_price(tcgplayer):
     """Estrae il prezzo da TCGPlayer come fallback quando Cardmarket non ha dati.
-    Cerca in holofoil, normal o reverseHolofoil per market o mid."""
+    Cerca in tutti i tipi di carte e campi prezzo disponibili."""
     if not tcgplayer or not isinstance(tcgplayer, dict):
         return 0.0, None
     
@@ -73,20 +73,32 @@ def extract_tcgplayer_price(tcgplayer):
     if not isinstance(prices, dict):
         return 0.0, None
     
-    # Cerca in vari tipi di carte (ordine di priorità)
-    card_types = [
+    # Lista completa di tutti i possibili tipi di carte TCGPlayer
+    # Cerca in TUTTI i tipi disponibili, non solo quelli predefiniti
+    all_card_types = list(prices.keys())
+    
+    # Priorità: prima i tipi comuni, poi tutti gli altri
+    priority_types = [
         'holofoil', 'reverseHolofoil', 'normal', 
         'unlimitedHolofoil', '1stEditionHolofoil',
         'unlimited', '1stEdition'
     ]
     
-    for card_type in card_types:
+    # Combina: prima i prioritari, poi tutti gli altri
+    card_types_to_check = priority_types + [t for t in all_card_types if t not in priority_types]
+    
+    for card_type in card_types_to_check:
         type_prices = prices.get(card_type, {})
         if not isinstance(type_prices, dict):
             continue
         
-        # Cerca market, mid, low, high (in ordine di preferenza)
-        for key in ('market', 'mid', 'low', 'high'):
+        # Cerca in TUTTI i campi prezzo disponibili
+        # Prima i campi standard, poi tutti gli altri
+        price_fields = ['market', 'mid', 'low', 'high', 'directLow']
+        all_price_fields = list(type_prices.keys())
+        fields_to_check = price_fields + [f for f in all_price_fields if f not in price_fields]
+        
+        for key in fields_to_check:
             value = type_prices.get(key)
             if value is not None:
                 try:
@@ -108,8 +120,12 @@ def extract_price_info(cardmarket, tcgplayer=None):
     if cardmarket and isinstance(cardmarket, dict):
         prices = cardmarket.get('prices', {})
         if isinstance(prices, dict):
-            # Ordine di preferenza per i prezzi Cardmarket
-            for key in ('trendPrice', 'averageSellPrice', 'avg1', 'avg7', 'avg30', 'lowPrice', 'suggestedPrice'):
+            # Cerca in TUTTI i campi prezzo disponibili di Cardmarket
+            priority_keys = ['trendPrice', 'averageSellPrice', 'avg1', 'avg7', 'avg30', 'lowPrice', 'suggestedPrice']
+            all_keys = list(prices.keys())
+            keys_to_check = priority_keys + [k for k in all_keys if k not in priority_keys]
+            
+            for key in keys_to_check:
                 value = prices.get(key)
                 if value is not None:
                     try:
