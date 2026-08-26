@@ -4,7 +4,7 @@ Esegui questo script dopo aver configurato OAuth per creare le tabelle necessari
 """
 
 from app import app, db
-from models import User, CollectedCard, PriceCache
+from models import User, CollectedCard, PriceCache, UserPreferences
 
 def init_database():
     """Inizializza il database creando tutte le tabelle."""
@@ -19,6 +19,7 @@ def init_database():
         print("  - users (utenti autenticati)")
         print("  - collected_cards (carte possedute per utente)")
         print("  - price_cache (cache prezzi scraped)")
+        print("  - user_preferences (preferenze utente)")
         print("\nIl database è pronto per l'uso!")
 
 if __name__ == "__main__":
