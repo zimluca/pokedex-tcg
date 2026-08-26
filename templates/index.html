@@ -59,13 +59,13 @@
                 class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
                 onchange="changeLanguage(this.value)"
             >
-                <option value="" {{ 'selected' if not user_language else '' }}>Tutte le lingue</option>
-                <option value="en" {{ 'selected' if user_language == 'en' else '' }}>English</option>
-                <option value="it" {{ 'selected' if user_language == 'it' else '' }}>Italiano</option>
-                <option value="fr" {{ 'selected' if user_language == 'fr' else '' }}>Français</option>
-                <option value="de" {{ 'selected' if user_language == 'de' else '' }}>Deutsch</option>
-                <option value="es" {{ 'selected' if user_language == 'es' else '' }}>Español</option>
-                <option value="ja" {{ 'selected' if user_language == 'ja' else '' }}>日本語</option>
+                <option value=""{% if not user_language %} selected{% endif %}>Tutte le lingue</option>
+                <option value="en"{% if user_language == 'en' %} selected{% endif %}>English</option>
+                <option value="it"{% if user_language == 'it' %} selected{% endif %}>Italiano</option>
+                <option value="fr"{% if user_language == 'fr' %} selected{% endif %}>Français</option>
+                <option value="de"{% if user_language == 'de' %} selected{% endif %}>Deutsch</option>
+                <option value="es"{% if user_language == 'es' %} selected{% endif %}>Español</option>
+                <option value="ja"{% if user_language == 'ja' %} selected{% endif %}>日本語</option>
             </select>
         </div>
         {% endif %}
