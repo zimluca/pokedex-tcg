@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import requests
+import re
 from models import db, Card, CollectedCard
 
 app = Flask(__name__)
@@ -67,15 +68,19 @@ def search():
             trend_price = 0.0  # FIX 2: Usiamo 0.0 invece di 'N/A' per non far crashare SQLite
             cardmarket_url = '#'
 
+        number = card.get('number', '')
         cards.append({
             'card_id': card_id,
             'nome_carta': name,
             'id_set': id_set,
             'immagine_url': image_url,
             'prezzo_stimato': float(trend_price),
-            'cardmarket_url': cardmarket_url
+            'cardmarket_url': cardmarket_url,
+            'numero': number
         })
 
+    cards.sort(key=lambda x: int(re.search(r'\d+', x['numero']).group()) if re.search(r'\d+', x['numero']) else 0)
+    cards.sort(key=lambda x: int(re.search(r'\d+', x['numero']).group()) if re.search(r'\d+', x['numero']) else 0)
     return render_template('index.html', sets=sets, results=cards)
 @app.route('/set/<set_id>', methods=['GET'])
 def get_set_cards(set_id):
@@ -105,12 +110,14 @@ def get_set_cards(set_id):
             trend_price = 'N/A'
             cardmarket_url = '#'
 
+        number = card.get('number', '')
         cards.append({
             'nome_carta': name,
             'id_set': id_set,
             'immagine_url': image_url,
             'prezzo_stimato': trend_price,
-            'cardmarket_url': cardmarket_url
+            'cardmarket_url': cardmarket_url,
+            'numero': number
         })
 
     return render_template('index.html', sets=sets, results=cards)
