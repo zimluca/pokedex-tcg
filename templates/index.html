@@ -106,10 +106,14 @@
                     
                     <p class="text-sm text-gray-600 mb-3">
                         <strong>Prezzo:</strong> 
+                        {% if card.prezzo_disponibile %}
                         <span class="text-green-600 font-semibold">€{{ "%.2f"|format(card.prezzo_stimato) }}</span>
+                        {% else %}
+                        <span class="text-gray-400 italic">Non disponibile</span>
+                        {% endif %}
                     </p>
                     
-                    <!-- Link Cardmarket -->
+                    <!-- Link Cardmarket/TCGPlayer -->
                     {% if card.cardmarket_url and card.cardmarket_url != '#' %}
                     <a 
                         href="{{ card.cardmarket_url }}" 
@@ -117,12 +121,16 @@
                         rel="noopener noreferrer"
                         class="inline-block bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded transition-colors mb-3 w-full text-center"
                     >
-                        Vedi su Cardmarket
+                        {% if card.prezzo_disponibile %}
+                        Vedi prezzo online
+                        {% else %}
+                        Cerca prezzo online
+                        {% endif %}
                     </a>
                     {% endif %}
                     
                     <!-- Checkbox possesso -->
-                    <label class="flex items-center cursor-pointer">
+                    <label class="flex items-center cursor-pointer mb-2">
                         <input 
                             type="checkbox" 
                             class="form-checkbox h-5 w-5 text-blue-600 rounded"
@@ -130,10 +138,26 @@
                             data-card-name="{{ card.nome_carta }}"
                             data-card-set="{{ card.id_set }}"
                             data-card-price="{{ card.prezzo_stimato }}"
+                            data-price-available="{{ card.prezzo_disponibile }}"
                             onchange="toggleOwnership(this)"
                         >
                         <span class="ml-2 text-sm font-medium text-gray-700">Possiedo questa carta</span>
                     </label>
+                    
+                    <!-- Input prezzo manuale (solo se prezzo non disponibile) -->
+                    {% if not card.prezzo_disponibile %}
+                    <div class="mt-2 hidden" id="manual-price-{{ card.card_id }}">
+                        <label class="text-xs text-gray-600 block mb-1">Inserisci prezzo manualmente (€):</label>
+                        <input 
+                            type="number" 
+                            step="0.01" 
+                            min="0"
+                            placeholder="0.00"
+                            class="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                            id="price-input-{{ card.card_id }}"
+                        >
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
@@ -233,51 +257,118 @@
             const cardId = checkbox.dataset.cardId;
             const cardName = checkbox.dataset.cardName;
             const cardSet = checkbox.dataset.cardSet;
-            const cardPrice = parseFloat(checkbox.dataset.cardPrice) || 0;
+            const priceAvailable = checkbox.dataset.priceAvailable === 'True';
+            let cardPrice = parseFloat(checkbox.dataset.cardPrice) || 0;
             
             if (!cardId) {
                 console.error('ID carta mancante');
-                checkbox.checked = !checkbox.checked; // Ripristina stato
+                checkbox.checked = !checkbox.checked;
                 return;
             }
             
-            const url = checkbox.checked ? '/api/collection/add' : '/api/collection/remove';
-            const data = { 
-                card_id: cardId, 
-                name: cardName, 
-                set_id: cardSet, 
-                price: cardPrice 
-            };
+            // Se sta aggiungendo e il prezzo non è disponibile, mostra input manuale
+            if (checkbox.checked && !priceAvailable) {
+                const manualPriceDiv = document.getElementById(`manual-price-${cardId}`);
+                const priceInput = document.getElementById(`price-input-${cardId}`);
+                
+                if (manualPriceDiv && priceInput) {
+                    manualPriceDiv.classList.remove('hidden');
+                    priceInput.focus();
+                    
+                    // Aspetta che l'utente inserisca il prezzo
+                    priceInput.addEventListener('blur', function handlePriceInput() {
+                        const manualPrice = parseFloat(priceInput.value) || 0;
+                        cardPrice = manualPrice;
+                        
+                        // Procedi con l'aggiunta
+                        addCardToCollection(checkbox, cardId, cardName, cardSet, cardPrice, manualPriceDiv);
+                        priceInput.removeEventListener('blur', handlePriceInput);
+                    }, { once: true });
+                    
+                    return;
+                }
+            }
             
-            // Disabilita la checkbox durante la richiesta
+            // Se sta rimuovendo o il prezzo è disponibile, procedi normalmente
+            if (checkbox.checked) {
+                addCardToCollection(checkbox, cardId, cardName, cardSet, cardPrice);
+            } else {
+                removeCardFromCollection(checkbox, cardId);
+            }
+        }
+        
+        /**
+         * Aggiunge una carta alla collezione
+         */
+        function addCardToCollection(checkbox, cardId, cardName, cardSet, cardPrice, manualPriceDiv = null) {
             checkbox.disabled = true;
             
-            fetch(url, {
+            fetch('/api/collection/add', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    card_id: cardId, 
+                    name: cardName, 
+                    set_id: cardSet, 
+                    price: cardPrice 
+                })
             })
             .then(response => {
-                if (!response.ok) {
-                    throw new Error('Errore nella richiesta');
-                }
+                if (!response.ok) throw new Error('Errore nella richiesta');
                 return response.json();
             })
             .then(data => {
-                console.log(data.message);
                 showNotification(data.message, 'success');
-                
-                // Aggiorna i valori senza ricaricare la pagina
                 updateCollectionValues();
+                
+                // Nascondi input manuale se presente
+                if (manualPriceDiv) {
+                    manualPriceDiv.classList.add('hidden');
+                }
             })
             .catch(error => {
                 console.error('Errore:', error);
                 showNotification('Errore nell\'operazione. Riprova.', 'error');
+                checkbox.checked = false;
+            })
+            .finally(() => {
+                checkbox.disabled = false;
+            });
+        }
+        
+        /**
+         * Rimuove una carta dalla collezione
+         */
+        function removeCardFromCollection(checkbox, cardId) {
+            checkbox.disabled = true;
+            
+            fetch('/api/collection/remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ card_id: cardId })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Errore nella richiesta');
+                return response.json();
+            })
+            .then(data => {
+                showNotification(data.message, 'success');
+                updateCollectionValues();
                 
-                // Ripristina lo stato della checkbox in caso di errore
-                checkbox.checked = !checkbox.checked;
+                // Nascondi e resetta input manuale se presente
+                const manualPriceDiv = document.getElementById(`manual-price-${cardId}`);
+                const priceInput = document.getElementById(`price-input-${cardId}`);
+                if (manualPriceDiv) {
+                    manualPriceDiv.classList.add('hidden');
+                }
+                if (priceInput) {
+                    priceInput.value = '';
+                }
+            })
+            .catch(error => {
+                console.error('Errore:', error);
+                showNotification('Errore nell\'operazione. Riprova.', 'error');
+                checkbox.checked = true;
             })
             .finally(() => {
                 checkbox.disabled = false;

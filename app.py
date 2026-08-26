@@ -167,30 +167,8 @@ def format_card(card):
     # Estrai prezzo e URL
     trend_price, price_url = extract_price_info(cardmarket, tcgplayer)
     
-    # Debug: stampa dettagli sui prezzi per capire il problema
-    if trend_price == 0:
-        card_name = card.get('name', 'Unknown')
-        print(f"[DEBUG] Prezzo 0 per '{card_name}'")
-        if cardmarket:
-            cm_prices = cardmarket.get('prices', {})
-            print(f"   Cardmarket presente: {bool(cardmarket)}, Prezzi: {cm_prices if cm_prices else 'Nessuno'}")
-        else:
-            print(f"   Cardmarket: Non presente")
-        if tcgplayer:
-            tcg_prices = tcgplayer.get('prices', {})
-            if tcg_prices:
-                print(f"   TCGPlayer presente: True, Prezzi disponibili:")
-                for card_type, type_prices in tcg_prices.items():
-                    print(f"      {card_type}: {type_prices}")
-            else:
-                print(f"   TCGPlayer presente: True, Prezzi: Nessuno (oggetto vuoto o None)")
-                print(f"   TCGPlayer completo: {tcgplayer}")
-        else:
-            print(f"   TCGPlayer: Non presente")
-    elif trend_price > 0:
-        # Log positivo per confermare che i prezzi vengono estratti
-        source = "Cardmarket" if cardmarket and cardmarket.get('prices') else "TCGPlayer"
-        print(f"[INFO] Prezzo trovato per '{card.get('name', 'Unknown')}': €{trend_price:.2f} (fonte: {source})")
+    # Determina se il prezzo è disponibile o meno
+    price_available = trend_price > 0
     
     return {
         'card_id': card.get('id', ''),
@@ -198,6 +176,7 @@ def format_card(card):
         'id_set': card.get('set', {}).get('id', ''),
         'immagine_url': card.get('images', {}).get('small', ''),
         'prezzo_stimato': trend_price,
+        'prezzo_disponibile': price_available,
         'cardmarket_url': price_url,
         'numero': card.get('number', ''),
     }
@@ -350,9 +329,12 @@ def add_to_collection():
     if already_owned:
         return jsonify({"message": "Carta già presente in collezione"}), 200
 
-    # Validazione e conversione prezzo
+    # Validazione e conversione prezzo (accetta anche prezzi inseriti manualmente)
     try:
         price = float(data.get('price', 0))
+        # Accetta prezzi negativi come 0
+        if price < 0:
+            price = 0.0
     except (ValueError, TypeError):
         price = 0.0
 
@@ -366,11 +348,46 @@ def add_to_collection():
     try:
         db.session.add(card)
         db.session.commit()
-        return jsonify({"message": "Carta aggiunta con successo"}), 200
+        return jsonify({"message": "Carta aggiunta con successo", "price": price}), 200
     except Exception as e:
         db.session.rollback()
         print(f"Errore nell'aggiunta della carta: {e}")
         return jsonify({"error": "Errore nel salvataggio"}), 500
+
+
+@app.route('/api/collection/update_price', methods=['POST'])
+def update_card_price():
+    """Aggiorna il prezzo di una carta nella collezione."""
+    data = request.json
+    
+    # Validazione input
+    if not data or 'card_id' not in data or 'price' not in data:
+        return jsonify({"error": "Dati mancanti"}), 400
+    
+    card_id = data.get('card_id', '').strip()
+    if not card_id:
+        return jsonify({"error": "ID carta non valido"}), 400
+    
+    # Validazione prezzo
+    try:
+        new_price = float(data.get('price', 0))
+        if new_price < 0:
+            return jsonify({"error": "Il prezzo non può essere negativo"}), 400
+    except (ValueError, TypeError):
+        return jsonify({"error": "Prezzo non valido"}), 400
+    
+    card = CollectedCard.query.filter_by(api_card_id=card_id).first()
+    if not card:
+        return jsonify({"error": "Carta non trovata in collezione"}), 404
+    
+    try:
+        card.price = new_price
+        db.session.commit()
+        return jsonify({"message": "Prezzo aggiornato con successo", "new_price": new_price}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Errore nell'aggiornamento del prezzo: {e}")
+        return jsonify({"error": "Errore nell'aggiornamento"}), 500
 
 
 @app.route('/api/collection/remove', methods=['POST'])
