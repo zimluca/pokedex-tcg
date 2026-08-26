@@ -53,7 +53,12 @@
                         onerror="this.style.display='none'"
                     >
                     {% endif %}
-                    <span class="text-sm">{{ set.name }}</span>
+                    <div class="flex-1">
+                        <div class="text-sm">{{ set.name }}</div>
+                        <div class="text-xs text-gray-400">
+                            Valore: €<span id="valore-set-{{ set.id }}">{{ "%.2f"|format(set_values.get(set.id, 0.0)) }}</span>
+                        </div>
+                    </div>
                 </div>
             </li>
             {% endfor %}
@@ -142,9 +147,10 @@
     </main>
 
     <script>
-        // Carica lo stato delle checkbox al caricamento della pagina
+        // Carica lo stato delle checkbox e i valori al caricamento della pagina
         document.addEventListener('DOMContentLoaded', function() {
             loadCollectionState();
+            updateCollectionValues();
         });
 
         /**
@@ -176,6 +182,47 @@
                 .catch(error => {
                     console.error('Errore nel caricamento della collezione:', error);
                     showNotification('Errore nel caricamento della collezione', 'error');
+                });
+        }
+
+        /**
+         * Aggiorna i valori della collezione (totale e per set)
+         */
+        function updateCollectionValues() {
+            fetch('/api/collection/stats')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Errore nel caricamento delle statistiche');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Aggiorna valore totale
+                    const totalElement = document.querySelector('.bg-green-700 p');
+                    if (totalElement && data.total_value !== undefined) {
+                        totalElement.textContent = `Valore Totale: €${data.total_value.toFixed(2)}`;
+                    }
+                    
+                    // Aggiorna valori per set
+                    if (data.set_values && typeof data.set_values === 'object') {
+                        Object.keys(data.set_values).forEach(setId => {
+                            const setValueSpan = document.getElementById(`valore-set-${setId}`);
+                            if (setValueSpan) {
+                                setValueSpan.textContent = data.set_values[setId].toFixed(2);
+                            }
+                        });
+                        
+                        // Resetta i set che non hanno carte
+                        document.querySelectorAll('[id^="valore-set-"]').forEach(span => {
+                            const setId = span.id.replace('valore-set-', '');
+                            if (!data.set_values[setId]) {
+                                span.textContent = '0.00';
+                            }
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Errore nel caricamento delle statistiche:', error);
                 });
         }
 
@@ -222,8 +269,8 @@
                 console.log(data.message);
                 showNotification(data.message, 'success');
                 
-                // Ricarica la pagina per aggiornare il valore totale
-                setTimeout(() => location.reload(), 500);
+                // Aggiorna i valori senza ricaricare la pagina
+                updateCollectionValues();
             })
             .catch(error => {
                 console.error('Errore:', error);

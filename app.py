@@ -1,5 +1,6 @@
 import os
 import re
+import time
 
 from flask import Flask, render_template, request, jsonify
 import requests
@@ -21,18 +22,28 @@ sets_cache = None
 set_cards_cache = {}  # cache in memoria: set_id -> lista di carte già scaricate
 
 
-def api_get(url, params=None):
-    """GET con timeout e gestione errori di connessione."""
-    try:
-        response = requests.get(url, headers=HEADERS, params=params, timeout=REQUEST_TIMEOUT)
-    except requests.exceptions.RequestException as e:
-        print(f"Errore di connessione: {e}")
+def api_get(url, params=None, max_retries=2):
+    """GET con timeout, gestione errori di connessione e retry automatico per rate limit (429)."""
+    for attempt in range(max_retries + 1):
+        try:
+            response = requests.get(url, headers=HEADERS, params=params, timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.RequestException as e:
+            print(f"Errore di connessione: {e}")
+            return None
+
+        if response.status_code == 200:
+            return response
+        
+        # Retry automatico per rate limit
+        if response.status_code == 429 and attempt < max_retries:
+            wait_time = 1.5
+            print(f"Rate limit (429) raggiunto, attendo {wait_time}s prima di riprovare (tentativo {attempt + 1}/{max_retries})...")
+            time.sleep(wait_time)
+            continue
+
+        print(f"Errore API (HTTP {response.status_code}): {response.text}")
         return None
-
-    if response.status_code == 200:
-        return response
-
-    print(f"Errore API (HTTP {response.status_code}): {response.text}")
+    
     return None
 
 
@@ -52,29 +63,69 @@ def get_all_sets():
     return sets_cache
 
 
-def extract_price_info(cardmarket):
-    """Restituisce (prezzo, url_cardmarket) usando il primo prezzo disponibile tra quelli noti.
-    Gestisce in modo sicuro valori None, stringhe e numeri."""
-    if not cardmarket or not isinstance(cardmarket, dict):
-        return 0.0, '#'
+def extract_tcgplayer_price(tcgplayer):
+    """Estrae il prezzo da TCGPlayer come fallback quando Cardmarket non ha dati.
+    Cerca in holofoil, normal o reverseHolofoil per market o mid."""
+    if not tcgplayer or not isinstance(tcgplayer, dict):
+        return 0.0
     
-    prices = cardmarket.get('prices', {})
+    prices = tcgplayer.get('prices', {})
     if not isinstance(prices, dict):
-        return 0.0, cardmarket.get('url', '#')
+        return 0.0
     
-    for key in ('trendPrice', 'averageSellPrice', 'lowPrice', '1DayAverage'):
-        value = prices.get(key)
-        if value is not None:
-            try:
-                return float(value), cardmarket.get('url', '#')
-            except (ValueError, TypeError):
-                continue
+    # Cerca in vari tipi di carte
+    for card_type in ('holofoil', 'normal', 'reverseHolofoil', 'unlimitedHolofoil', '1stEditionHolofoil'):
+        type_prices = prices.get(card_type, {})
+        if not isinstance(type_prices, dict):
+            continue
+        
+        # Cerca market o mid
+        for key in ('market', 'mid'):
+            value = type_prices.get(key)
+            if value is not None:
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    continue
     
-    return 0.0, cardmarket.get('url', '#')
+    return 0.0
+
+
+def extract_price_info(cardmarket, tcgplayer=None):
+    """Restituisce (prezzo, url_cardmarket) usando il primo prezzo disponibile.
+    Priorità: Cardmarket (EUR) -> TCGPlayer (USD) -> 0.0
+    Gestisce in modo sicuro valori None, stringhe e numeri."""
+    
+    # Prova prima con Cardmarket
+    if cardmarket and isinstance(cardmarket, dict):
+        prices = cardmarket.get('prices', {})
+        if isinstance(prices, dict):
+            for key in ('trendPrice', 'averageSellPrice', 'lowPrice', '1DayAverage'):
+                value = prices.get(key)
+                if value is not None:
+                    try:
+                        price = float(value)
+                        if price > 0:
+                            return price, cardmarket.get('url', '#')
+                    except (ValueError, TypeError):
+                        continue
+    
+    # Fallback su TCGPlayer se Cardmarket non ha prezzi validi
+    tcg_price = extract_tcgplayer_price(tcgplayer)
+    if tcg_price > 0:
+        tcg_url = tcgplayer.get('url', '#') if isinstance(tcgplayer, dict) else '#'
+        return tcg_price, tcg_url
+    
+    # Nessun prezzo disponibile
+    cardmarket_url = cardmarket.get('url', '#') if isinstance(cardmarket, dict) else '#'
+    return 0.0, cardmarket_url
 
 
 def format_card(card):
-    trend_price, cardmarket_url = extract_price_info(card.get('cardmarket', {}))
+    trend_price, cardmarket_url = extract_price_info(
+        card.get('cardmarket', {}),
+        card.get('tcgplayer', {})
+    )
     return {
         'card_id': card.get('id', ''),
         'nome_carta': card.get('name', ''),
@@ -130,23 +181,42 @@ def sort_by_number(cards):
     return cards
 
 
+def calculate_collection_stats():
+    """Calcola statistiche della collezione: valore totale e valori per set.
+    Restituisce (total_value, set_values_dict)."""
+    try:
+        collected_cards = CollectedCard.query.all()
+        total_value = 0.0
+        set_values = {}
+        
+        for card in collected_cards:
+            price = card.price if card.price else 0.0
+            total_value += price
+            
+            # Aggrega per set
+            set_id = card.set_name
+            if set_id not in set_values:
+                set_values[set_id] = 0.0
+            set_values[set_id] += price
+        
+        return round(total_value, 2), set_values
+    except Exception as e:
+        print(f"Errore nel calcolo delle statistiche: {e}")
+        return 0.0, {}
+
+
 def render_cards_page(cards=None, current_set_id=None, error=None):
     """Funzione helper per renderizzare la pagina con le carte.
     Elimina duplicazione di codice tra le varie rotte."""
     sets = get_all_sets()
-    
-    # Calcola il valore totale della collezione in modo sicuro
-    try:
-        total_value = sum(card.price for card in CollectedCard.query.all() if card.price)
-    except Exception as e:
-        print(f"Errore nel calcolo del valore totale: {e}")
-        total_value = 0.0
+    total_value, set_values = calculate_collection_stats()
     
     return render_template(
         'index.html',
         sets=sets,
         results=cards or [],
-        total_value=round(total_value, 2),
+        total_value=total_value,
+        set_values=set_values,
         current_set_id=current_set_id,
         error=error
     )
@@ -262,6 +332,20 @@ def get_collection():
     except Exception as e:
         print(f"Errore nel recupero della collezione: {e}")
         return jsonify({"error": "Errore nel recupero della collezione"}), 500
+
+
+@app.route('/api/collection/stats', methods=['GET'])
+def get_collection_stats():
+    """Restituisce statistiche della collezione: valore totale e valori per set."""
+    try:
+        total_value, set_values = calculate_collection_stats()
+        return jsonify({
+            'total_value': total_value,
+            'set_values': set_values
+        }), 200
+    except Exception as e:
+        print(f"Errore nel recupero delle statistiche: {e}")
+        return jsonify({"error": "Errore nel recupero delle statistiche"}), 500
 
 
 if __name__ == "__main__":
