@@ -7,7 +7,7 @@ from flask_login import LoginManager, login_required, current_user
 import requests
 
 from models import db, User, Card, CollectedCard, PriceCache
-from scraper import scrape_cardmarket_price, scrape_tcgplayer_price
+from scraper import scrape_cardmarket_price, scrape_tcgplayer_price, scrape_ebay_price
 from config import Config
 from auth import auth_bp
 
@@ -223,7 +223,15 @@ def extract_price_info(cardmarket, tcgplayer=None, card_id=None, card_name=None,
     if enable_scraping and card_name and set_name:
         print(f"[SCRAPER] Tentativo scraping per '{card_name}' ({set_name})...")
         
-        # Prova Cardmarket scraping
+        # Prova eBay scraping (PRIORITÀ: prezzi reali di vendite recenti)
+        scraped_price, scraped_url = scrape_ebay_price(card_name, set_name)
+        if scraped_price > 0:
+            # Salva in cache
+            if card_id:
+                cache_price(card_id, card_name, set_name, scraped_price, scraped_url, 'ebay_scraped')
+            return scraped_price, scraped_url if scraped_url else '#'
+        
+        # Fallback: prova Cardmarket scraping
         scraped_price, scraped_url = scrape_cardmarket_price(card_name, set_name)
         if scraped_price > 0:
             # Salva in cache
@@ -231,7 +239,7 @@ def extract_price_info(cardmarket, tcgplayer=None, card_id=None, card_name=None,
                 cache_price(card_id, card_name, set_name, scraped_price, scraped_url, 'cardmarket_scraped')
             return scraped_price, scraped_url if scraped_url else '#'
         
-        # Fallback: prova TCGPlayer scraping
+        # Ultimo fallback: prova TCGPlayer scraping
         scraped_price, scraped_url = scrape_tcgplayer_price(card_name, set_name)
         if scraped_price > 0:
             if card_id:
