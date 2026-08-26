@@ -178,7 +178,13 @@ def format_card(card):
             print(f"   Cardmarket: Non presente")
         if tcgplayer:
             tcg_prices = tcgplayer.get('prices', {})
-            print(f"   TCGPlayer presente: {bool(tcgplayer)}, Prezzi: {tcg_prices if tcg_prices else 'Nessuno'}")
+            if tcg_prices:
+                print(f"   TCGPlayer presente: True, Prezzi disponibili:")
+                for card_type, type_prices in tcg_prices.items():
+                    print(f"      {card_type}: {type_prices}")
+            else:
+                print(f"   TCGPlayer presente: True, Prezzi: Nessuno (oggetto vuoto o None)")
+                print(f"   TCGPlayer completo: {tcgplayer}")
         else:
             print(f"   TCGPlayer: Non presente")
     elif trend_price > 0:
@@ -199,12 +205,22 @@ def format_card(card):
 
 def fetch_all_cards(query):
     """Scarica tutte le carte che corrispondono alla query, gestendo la paginazione.
+    Richiede esplicitamente i dati di prezzo da Cardmarket e TCGPlayer.
     Restituisce None in caso di errore di connessione."""
     all_cards = []
     page = 1
 
+    # Parametri per richiedere esplicitamente i prezzi
+    params = {
+        'q': query,
+        'page': page,
+        'pageSize': 250,
+        'select': 'id,name,number,set,images,cardmarket,tcgplayer'
+    }
+
     while page <= MAX_PAGES:
-        response = api_get(f"{POKEMON_API_BASE}/cards", params={'q': query, 'page': page, 'pageSize': 250})
+        params['page'] = page
+        response = api_get(f"{POKEMON_API_BASE}/cards", params=params)
         if response is None:
             return None
 
