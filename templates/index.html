@@ -13,20 +13,31 @@
         
         <!-- Form di ricerca -->
         <div class="px-4 mb-4">
-            <form class="flex" method="GET" action="/search">
-                <input 
-                    type="text" 
-                    name="query" 
-                    class="border border-gray-300 rounded-l-md py-2 px-4 w-full text-gray-800" 
-                    placeholder="Cerca carta..."
-                    required
-                >
-                <button 
-                    type="submit" 
-                    class="bg-blue-500 hover:bg-blue-600 text-white rounded-r-md py-2 px-4 transition-colors"
-                >
-                    Cerca
-                </button>
+            <form class="flex flex-col gap-2" method="GET" action="/search">
+                <div class="flex">
+                    <input 
+                        type="text" 
+                        name="query" 
+                        class="border border-gray-300 rounded-l-md py-2 px-4 w-full text-gray-800" 
+                        placeholder="Cerca carta..."
+                        required
+                    >
+                    <button 
+                        type="submit" 
+                        class="bg-blue-500 hover:bg-blue-600 text-white rounded-r-md py-2 px-4 transition-colors"
+                    >
+                        Cerca
+                    </button>
+                </div>
+                <label class="flex items-center text-xs text-gray-300 cursor-pointer">
+                    <input 
+                        type="checkbox" 
+                        name="scrape" 
+                        value="true"
+                        class="mr-2"
+                    >
+                    <span>Abilita scraping prezzi (lento)</span>
+                </label>
             </form>
         </div>
         

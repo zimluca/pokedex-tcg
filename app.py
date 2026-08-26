@@ -5,7 +5,8 @@ import time
 from flask import Flask, render_template, request, jsonify
 import requests
 
-from models import db, Card, CollectedCard
+from models import db, Card, CollectedCard, PriceCache
+from scraper import scrape_cardmarket_price, scrape_tcgplayer_price
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///collezione.db'
@@ -111,20 +112,55 @@ def extract_tcgplayer_price(tcgplayer):
     return 0.0, None
 
 
-def extract_price_info(cardmarket, tcgplayer=None):
+def get_cached_price(card_id):
+    """Recupera il prezzo dalla cache se disponibile e non obsoleto."""
+    cached = PriceCache.query.filter_by(card_id=card_id).first()
+    if cached and not cached.is_stale(days=7):
+        return cached.price, cached.url, cached.source
+    return None, None, None
+
+
+def cache_price(card_id, card_name, set_name, price, url, source):
+    """Salva il prezzo nella cache."""
+    try:
+        cached = PriceCache.query.filter_by(card_id=card_id).first()
+        if cached:
+            # Aggiorna esistente
+            cached.price = price
+            cached.url = url
+            cached.source = source
+            cached.scraped_at = db.func.now()
+        else:
+            # Crea nuovo
+            cached = PriceCache(
+                card_id=card_id,
+                card_name=card_name,
+                set_name=set_name,
+                price=price,
+                url=url,
+                source=source
+            )
+            db.session.add(cached)
+        
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[CACHE] Errore nel salvataggio: {e}")
+
+
+def extract_price_info(cardmarket, tcgplayer=None, card_id=None, card_name=None, set_name=None, enable_scraping=False):
     """Restituisce (prezzo, url) usando il primo prezzo disponibile.
-    Priorità: Cardmarket (EUR) con prezzo valido -> TCGPlayer (USD) -> Cardmarket URL -> 0.0
+    Priorità: Cardmarket API → TCGPlayer API → Cache → Scraping (se abilitato) → 0.0
     Gestisce in modo sicuro valori None, stringhe e numeri."""
     
     cardmarket_price = 0.0
     cardmarket_url = '#'
     
-    # Prova prima con Cardmarket (Europa)
+    # 1. Prova prima con Cardmarket API (Europa)
     if cardmarket and isinstance(cardmarket, dict):
         cardmarket_url = cardmarket.get('url', '#')
         prices = cardmarket.get('prices', {})
         if isinstance(prices, dict):
-            # Cerca in TUTTI i campi prezzo disponibili di Cardmarket
             priority_keys = ['trendPrice', 'averageSellPrice', 'avg1', 'avg7', 'avg30', 'lowPrice', 'suggestedPrice']
             all_keys = list(prices.keys())
             keys_to_check = priority_keys + [k for k in all_keys if k not in priority_keys]
@@ -140,17 +176,42 @@ def extract_price_info(cardmarket, tcgplayer=None):
                     except (ValueError, TypeError):
                         continue
     
-    # Se Cardmarket ha un prezzo valido, usalo
     if cardmarket_price > 0:
         return cardmarket_price, cardmarket_url
     
-    # Altrimenti prova con TCGPlayer (USA)
+    # 2. Prova con TCGPlayer API (USA)
     if tcgplayer:
         tcg_price, tcg_url = extract_tcgplayer_price(tcgplayer)
         if tcg_price > 0:
             return tcg_price, tcg_url if tcg_url else '#'
     
-    # Nessun prezzo disponibile - restituisci URL Cardmarket se disponibile, altrimenti TCGPlayer
+    # 3. Controlla la cache (se abbiamo card_id)
+    if card_id:
+        cached_price, cached_url, cached_source = get_cached_price(card_id)
+        if cached_price and cached_price > 0:
+            print(f"[CACHE] Prezzo da cache per '{card_name}': €{cached_price:.2f} ({cached_source})")
+            return cached_price, cached_url if cached_url else '#'
+    
+    # 4. Scraping come ultimo fallback (SOLO se esplicitamente abilitato)
+    if enable_scraping and card_name and set_name:
+        print(f"[SCRAPER] Tentativo scraping per '{card_name}' ({set_name})...")
+        
+        # Prova Cardmarket scraping
+        scraped_price, scraped_url = scrape_cardmarket_price(card_name, set_name)
+        if scraped_price > 0:
+            # Salva in cache
+            if card_id:
+                cache_price(card_id, card_name, set_name, scraped_price, scraped_url, 'cardmarket_scraped')
+            return scraped_price, scraped_url if scraped_url else '#'
+        
+        # Fallback: prova TCGPlayer scraping
+        scraped_price, scraped_url = scrape_tcgplayer_price(card_name, set_name)
+        if scraped_price > 0:
+            if card_id:
+                cache_price(card_id, card_name, set_name, scraped_price, scraped_url, 'tcgplayer_scraped')
+            return scraped_price, scraped_url if scraped_url else '#'
+    
+    # 5. Nessun prezzo disponibile
     if cardmarket_url != '#':
         return 0.0, cardmarket_url
     if tcgplayer and isinstance(tcgplayer, dict):
@@ -159,21 +220,36 @@ def extract_price_info(cardmarket, tcgplayer=None):
     return 0.0, '#'
 
 
-def format_card(card):
-    """Formatta i dati della carta dall'API in un dizionario semplificato."""
+def format_card(card, enable_scraping=False):
+    """Formatta i dati della carta dall'API in un dizionario semplificato.
+    
+    Args:
+        card: Dati carta dall'API
+        enable_scraping: Se True, abilita lo scraping per carte senza prezzo (LENTO!)
+    """
     cardmarket = card.get('cardmarket')
     tcgplayer = card.get('tcgplayer')
+    card_id = card.get('id', '')
+    card_name = card.get('name', '')
+    set_name = card.get('set', {}).get('id', '')
     
-    # Estrai prezzo e URL
-    trend_price, price_url = extract_price_info(cardmarket, tcgplayer)
+    # Estrai prezzo e URL (con possibile scraping)
+    trend_price, price_url = extract_price_info(
+        cardmarket, 
+        tcgplayer,
+        card_id=card_id,
+        card_name=card_name,
+        set_name=set_name,
+        enable_scraping=enable_scraping
+    )
     
     # Determina se il prezzo è disponibile o meno
     price_available = trend_price > 0
     
     return {
-        'card_id': card.get('id', ''),
-        'nome_carta': card.get('name', ''),
-        'id_set': card.get('set', {}).get('id', ''),
+        'card_id': card_id,
+        'nome_carta': card_name,
+        'id_set': set_name,
         'immagine_url': card.get('images', {}).get('small', ''),
         'prezzo_stimato': trend_price,
         'prezzo_disponibile': price_available,
@@ -285,6 +361,7 @@ def index():
 @app.route('/search', methods=['GET'])
 def search():
     query = request.args.get('query', '').strip()
+    enable_scraping = request.args.get('scrape', '').lower() == 'true'
     
     if not query:
         return render_cards_page()
@@ -293,22 +370,30 @@ def search():
     if raw_cards is None:
         return render_cards_page(error='Errore di connessione al database Pokémon')
 
-    cards = sort_by_number([format_card(c) for c in raw_cards])
+    # ATTENZIONE: enable_scraping=True è LENTO! Usa solo se necessario
+    cards = sort_by_number([format_card(c, enable_scraping=enable_scraping) for c in raw_cards])
     return render_cards_page(cards=cards)
 
 
 @app.route('/set/<set_id>', methods=['GET'])
 def get_set_cards(set_id):
-    # Usa la cache se disponibile
-    if set_id in set_cards_cache:
+    enable_scraping = request.args.get('scrape', '').lower() == 'true'
+    
+    # Usa la cache se disponibile E non è richiesto scraping
+    if set_id in set_cards_cache and not enable_scraping:
         return render_cards_page(cards=set_cards_cache[set_id], current_set_id=set_id)
 
     raw_cards = fetch_all_cards(f"set.id:{set_id}")
     if raw_cards is None:
         return render_cards_page(current_set_id=set_id, error='Errore di connessione al database Pokémon')
 
-    cards = sort_by_number([format_card(c) for c in raw_cards])
-    set_cards_cache[set_id] = cards
+    # ATTENZIONE: enable_scraping=True è MOLTO LENTO per set interi!
+    cards = sort_by_number([format_card(c, enable_scraping=enable_scraping) for c in raw_cards])
+    
+    # Salva in cache solo se non è stato fatto scraping
+    if not enable_scraping:
+        set_cards_cache[set_id] = cards
+    
     return render_cards_page(cards=cards, current_set_id=set_id)
 
 

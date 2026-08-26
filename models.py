@@ -37,3 +37,26 @@ class CollectedCard(db.Model):
             'set_name': self.set_name,
             'price': self.price
         }
+
+
+class PriceCache(db.Model):
+    """Cache persistente per i prezzi ottenuti tramite scraping.
+    Evita di fare scraping ripetuto per la stessa carta."""
+    __tablename__ = 'price_cache'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    card_id = db.Column(db.String(50), nullable=False, unique=True, index=True)
+    card_name = db.Column(db.String(100), nullable=False)
+    set_name = db.Column(db.String(100), nullable=False)
+    price = db.Column(db.Float, nullable=False, default=0.0)
+    source = db.Column(db.String(20), nullable=False)  # 'cardmarket', 'tcgplayer', 'manual'
+    url = db.Column(db.String(500))
+    scraped_at = db.Column(db.DateTime, nullable=False, default=db.func.now())
+    
+    def __repr__(self):
+        return f'<PriceCache {self.card_name}: €{self.price} from {self.source}>'
+    
+    def is_stale(self, days=7):
+        """Verifica se il prezzo in cache è vecchio (default: 7 giorni)."""
+        from datetime import datetime, timedelta
+        return datetime.now() - self.scraped_at > timedelta(days=days)
