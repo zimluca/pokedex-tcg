@@ -1,5 +1,4 @@
 import os
-import time
 import re
 
 from flask import Flask, render_template, request, jsonify
@@ -15,40 +14,25 @@ db.init_app(app)
 POKEMON_API_BASE = "https://api.pokemontcg.io/v2"
 REQUEST_TIMEOUT = 10  # secondi: evita che una richiesta lenta blocchi l'app
 MAX_PAGES = 20         # sicurezza anti-loop-infinito in caso di risposte anomale
-MAX_RETRIES = 3        # tentativi in caso di rate limit (HTTP 429)
 
-HEADERS = {'User-Agent': 'Mozilla/5.0'}
-API_KEY = os.environ.get('POKEMONTCG_API_KEY')
-if API_KEY:
-    HEADERS['X-Api-Key'] = API_KEY
+HEADERS = {'X-Api-Key': 'a72c1fed-a82f-4aa8-8974-106c8f056733'}
 
 sets_cache = None
 set_cards_cache = {}  # cache in memoria: set_id -> lista di carte già scaricate
 
 
 def api_get(url, params=None):
-    """GET con timeout, gestione errori di connessione e retry sul rate limit (429)."""
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = requests.get(url, headers=HEADERS, params=params, timeout=REQUEST_TIMEOUT)
-        except requests.exceptions.RequestException as e:
-            print(f"Errore di connessione: {e}")
-            return None
-
-        if response.status_code == 200:
-            return response
-
-        if response.status_code == 429:
-            wait = 2 ** attempt
-            print(f"Rate limit raggiunto, riprovo tra {wait}s...")
-            time.sleep(wait)
-            continue
-
-        print(f"Errore di connessione: {response.status_code}")
-        print(response.text)
+    """GET con timeout e gestione errori di connessione."""
+    try:
+        response = requests.get(url, headers=HEADERS, params=params, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.RequestException as e:
+        print(f"Errore di connessione: {e}")
         return None
 
-    print("Troppi tentativi falliti per rate limit")
+    if response.status_code == 200:
+        return response
+
+    print(f"Errore API (HTTP {response.status_code}): {response.text}")
     return None
 
 
