@@ -9,8 +9,13 @@ from config import Config
 
 auth_bp = Blueprint('auth', __name__)
 
+# Verifica che le credenziali OAuth siano configurate
+if not Config.GOOGLE_CLIENT_ID or not Config.GOOGLE_CLIENT_SECRET:
+    print("[AUTH] ATTENZIONE: Credenziali Google OAuth non configurate!")
+    print("[AUTH] Configura GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET nel file .env")
+
 # Client OAuth
-client = WebApplicationClient(Config.GOOGLE_CLIENT_ID)
+client = WebApplicationClient(Config.GOOGLE_CLIENT_ID) if Config.GOOGLE_CLIENT_ID else None
 
 
 def get_google_provider_cfg():
@@ -28,6 +33,10 @@ def login():
     """Inizia il flusso di autenticazione Google OAuth."""
     if current_user.is_authenticated:
         return redirect(url_for('index'))
+    
+    # Verifica che il client OAuth sia configurato
+    if not client:
+        return "Errore: credenziali OAuth non configurate. Controlla il file .env", 500
     
     # Recupera configurazione Google
     google_provider_cfg = get_google_provider_cfg()

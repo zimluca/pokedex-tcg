@@ -225,11 +225,18 @@
             fetch('/api/collection')
                 .then(response => {
                     if (!response.ok) {
+                        // Se l'utente non è autenticato o c'è un errore, non mostrare notifica
+                        if (response.status === 401) {
+                            console.log('Utente non autenticato');
+                            return null;
+                        }
                         throw new Error('Errore nel caricamento della collezione');
                     }
                     return response.json();
                 })
                 .then(data => {
+                    if (!data) return; // Utente non autenticato
+                    
                     if (!Array.isArray(data)) {
                         console.error('Formato dati non valido:', data);
                         return;
@@ -246,7 +253,7 @@
                 })
                 .catch(error => {
                     console.error('Errore nel caricamento della collezione:', error);
-                    showNotification('Errore nel caricamento della collezione', 'error');
+                    // Non mostrare notifica per evitare spam
                 });
         }
 
@@ -257,11 +264,18 @@
             fetch('/api/collection/stats')
                 .then(response => {
                     if (!response.ok) {
+                        // Se l'utente non è autenticato, non fare nulla
+                        if (response.status === 401) {
+                            console.log('Utente non autenticato');
+                            return null;
+                        }
                         throw new Error('Errore nel caricamento delle statistiche');
                     }
                     return response.json();
                 })
                 .then(data => {
+                    if (!data) return; // Utente non autenticato
+                    
                     // Aggiorna valore totale
                     const totalElement = document.querySelector('.bg-green-700 p');
                     if (totalElement && data.total_value !== undefined) {
@@ -288,6 +302,7 @@
                 })
                 .catch(error => {
                     console.error('Errore nel caricamento delle statistiche:', error);
+                    // Non mostrare notifica per evitare spam
                 });
         }
 

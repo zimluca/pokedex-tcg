@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+# Carica le variabili d'ambiente dal file .env
+load_dotenv()
 
 class Config:
     """Configurazione dell'applicazione Flask."""

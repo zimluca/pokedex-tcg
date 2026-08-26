@@ -70,14 +70,16 @@ def get_all_sets():
     if sets_cache is not None:
         return sets_cache
 
+    print("[API] Scaricamento lista set...")
     response = api_get(f"{POKEMON_API_BASE}/sets")
     if response is None:
+        print("[API] ERRORE: Impossibile scaricare i set")
         sets_cache = None  # al prossimo giro riprova
         return []
 
     data = response.json()
     sets_cache = sorted(data.get('data', []), key=lambda x: x.get('releaseDate', ''), reverse=True)
-    print(f"Set scaricati: {len(sets_cache)}")
+    print(f"[API] Set scaricati con successo: {len(sets_cache)}")
     return sets_cache
 
 
