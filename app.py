@@ -483,8 +483,13 @@ def get_set_cards(set_id):
 @app.route('/api/collection/add', methods=['POST'])
 @login_required
 def add_to_collection():
-    data = request.json
-    print(f"[API] Richiesta aggiunta carta - User: {current_user.email}, Data: {data}")
+    try:
+        data = request.json
+        print(f"[API] Richiesta aggiunta carta - User ID: {current_user.id}, Email: {current_user.email}")
+        print(f"[API] Dati ricevuti: {data}")
+    except Exception as e:
+        print(f"[API] Errore nel parsing della richiesta: {e}")
+        return jsonify({"error": "Richiesta non valida"}), 400
     
     # Validazione input
     if not data or 'card_id' not in data:
@@ -515,6 +520,13 @@ def add_to_collection():
         price = 0.0
 
     try:
+        # Verifica che il database sia accessibile
+        try:
+            db.session.execute('SELECT 1')
+        except Exception as db_error:
+            print(f"[API] ERRORE: Database non accessibile: {db_error}")
+            return jsonify({"error": "Database non disponibile"}), 503
+        
         card = CollectedCard(
             user_id=current_user.id,
             api_card_id=card_id,
@@ -523,13 +535,17 @@ def add_to_collection():
             price=price
         )
         
-        print(f"[API] Tentativo aggiunta carta: user_id={current_user.id}, card_id={card_id}, name={card.name}, set={card.set_name}, price={price}")
+        print(f"[API] Oggetto carta creato: user_id={current_user.id}, card_id={card_id}, name={card.name}, set={card.set_name}, price={price}")
         
         db.session.add(card)
-        db.session.flush()  # Forza la validazione prima del commit
-        db.session.commit()
+        print(f"[API] Carta aggiunta alla sessione, eseguo flush...")
         
-        print(f"[API] ✓ Carta aggiunta con successo: {card_id} per user {current_user.id}")
+        db.session.flush()  # Forza la validazione prima del commit
+        print(f"[API] Flush completato, eseguo commit...")
+        
+        db.session.commit()
+        print(f"[API] ✓ Commit completato! Carta aggiunta con successo: {card_id} per user {current_user.id}")
+        
         return jsonify({"message": "Carta aggiunta con successo", "price": price}), 200
         
     except Exception as e:
@@ -539,9 +555,20 @@ def add_to_collection():
         print(f"  Messaggio: {str(e)}")
         print(f"  User ID: {current_user.id}")
         print(f"  Card ID: {card_id}")
+        print(f"  Nome carta: {data.get('name', 'N/A')}")
+        print(f"  Set: {data.get('set_id', 'N/A')}")
+        
         import traceback
         traceback.print_exc()
-        return jsonify({"error": f"Errore nel salvataggio: {str(e)}"}), 500
+        
+        # Restituisci un messaggio di errore più dettagliato
+        error_msg = str(e)
+        if "UNIQUE constraint failed" in error_msg:
+            return jsonify({"error": "Carta già presente nella collezione"}), 409
+        elif "NOT NULL constraint failed" in error_msg:
+            return jsonify({"error": "Dati mancanti per salvare la carta"}), 400
+        else:
+            return jsonify({"error": f"Errore nel salvataggio: {error_msg}"}), 500
 
 
 @app.route('/api/collection/update_price', methods=['POST'])
@@ -697,12 +724,12 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
         
-        # Avvia il daemon di aggiornamento prezzi
-        start_price_updater()
-        
         # Pre-carica i set popolari in un thread separato per non bloccare l'avvio
         import threading
         preload_thread = threading.Thread(target=preload_popular_sets, daemon=True)
         preload_thread.start()
+    
+    # Avvia il daemon di aggiornamento prezzi (dopo l'app context)
+    start_price_updater(app)
     
     app.run(debug=True, threaded=True)

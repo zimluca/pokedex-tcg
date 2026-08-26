@@ -6,15 +6,15 @@ Esegue scraping in background per mantenere i prezzi aggiornati.
 import time
 import threading
 from datetime import datetime, timedelta
-from app import app, db
-from models import PriceCache, CollectedCard
-from scraper import scrape_ebay_price, scrape_cardmarket_price
 
 UPDATE_INTERVAL = 2 * 60 * 60  # 2 ore in secondi
 
 
-def update_prices_for_collected_cards():
+def update_prices_for_collected_cards(app):
     """Aggiorna i prezzi di tutte le carte possedute dagli utenti."""
+    from models import PriceCache, CollectedCard, db
+    from scraper import scrape_ebay_price, scrape_cardmarket_price
+    
     with app.app_context():
         print(f"[PRICE_UPDATER] Inizio aggiornamento prezzi - {datetime.now()}")
         
@@ -78,20 +78,22 @@ def update_prices_for_collected_cards():
         print(f"[PRICE_UPDATER] Aggiornamento completato: {updated_count} prezzi aggiornati")
 
 
-def price_updater_daemon():
+def price_updater_daemon(app):
     """Daemon che esegue l'aggiornamento prezzi ogni 2 ore."""
     while True:
         try:
-            update_prices_for_collected_cards()
+            update_prices_for_collected_cards(app)
         except Exception as e:
             print(f"[PRICE_UPDATER] Errore durante l'aggiornamento: {e}")
+            import traceback
+            traceback.print_exc()
         
         print(f"[PRICE_UPDATER] Prossimo aggiornamento tra 2 ore")
         time.sleep(UPDATE_INTERVAL)
 
 
-def start_price_updater():
+def start_price_updater(app):
     """Avvia il daemon di aggiornamento prezzi in background."""
-    updater_thread = threading.Thread(target=price_updater_daemon, daemon=True)
+    updater_thread = threading.Thread(target=lambda: price_updater_daemon(app), daemon=True)
     updater_thread.start()
     print("[PRICE_UPDATER] Daemon di aggiornamento prezzi avviato")
