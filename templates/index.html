@@ -7,80 +7,254 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 h-screen flex">
+    <!-- Sidebar con lista set -->
     <aside class="w-72 bg-gray-800 text-white h-screen overflow-y-auto">
         <h2 class="text-2xl font-bold p-4">Set di Carte</h2>
-        <form class="mb-4 flex" method="GET" action="/search">
-            <input type="text" name="query" class="border border-gray-300 rounded-l-md py-2 px-4 w-full" placeholder="Inserisci il nome della carta">
-            <button type="submit" class="bg-blue-500 text-white rounded-r-md py-2 px-4">Cerca</button>
-        </form>
-        <p class="text-lg font-bold mb-2">Valore Totale Collezione: € {{ total_value }}</p>
+        
+        <!-- Form di ricerca -->
+        <div class="px-4 mb-4">
+            <form class="flex" method="GET" action="/search">
+                <input 
+                    type="text" 
+                    name="query" 
+                    class="border border-gray-300 rounded-l-md py-2 px-4 w-full text-gray-800" 
+                    placeholder="Cerca carta..."
+                    required
+                >
+                <button 
+                    type="submit" 
+                    class="bg-blue-500 hover:bg-blue-600 text-white rounded-r-md py-2 px-4 transition-colors"
+                >
+                    Cerca
+                </button>
+            </form>
+        </div>
+        
+        <!-- Valore totale collezione -->
+        <div class="px-4 mb-4">
+            <p class="text-lg font-bold bg-green-700 rounded p-2 text-center">
+                Valore Totale: €{{ "%.2f"|format(total_value) }}
+            </p>
+        </div>
+        
+        <!-- Lista set -->
         <ul>
             {% for set in sets %}
-            <li class="p-2 hover:bg-gray-700 cursor-pointer {% if set.id == current_set_id %}bg-blue-800 text-white border-l-4 border-blue-400{% endif %}" onclick="window.location.href='/set/{{ set.id }}'">
-                <img src="{{ set.images.symbol }}" alt="{{ set.name }} Logo" class="h-8 w-8 inline-block mr-2">
-                {{ set.name }} - Valore: € 0.00
+            <li 
+                class="p-2 hover:bg-gray-700 cursor-pointer transition-colors {% if set.id == current_set_id %}bg-blue-800 border-l-4 border-blue-400{% endif %}" 
+                onclick="window.location.href='/set/{{ set.id }}'"
+            >
+                <div class="flex items-center">
+                    {% if set.images and set.images.symbol %}
+                    <img 
+                        src="{{ set.images.symbol }}" 
+                        alt="{{ set.name }} Logo" 
+                        class="h-8 w-8 mr-2"
+                        onerror="this.style.display='none'"
+                    >
+                    {% endif %}
+                    <span class="text-sm">{{ set.name }}</span>
+                </div>
             </li>
             {% endfor %}
         </ul>
     </aside>
-    <main class="flex-1 p-4">
-        <h1 class="text-4xl font-bold mb-10">Il mio Pokédex di Carte</h1>
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="results">
-            {% if error %}
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                <strong class="font-bold">Errore:</strong>
-                <span class="block sm:inline">{{ error }}</span>
-            </div>
-            {% endif %}
+    
+    <!-- Contenuto principale -->
+    <main class="flex-1 p-6 overflow-y-auto">
+        <h1 class="text-4xl font-bold mb-8 text-gray-800">Il mio Pokédex di Carte</h1>
+        
+        <!-- Messaggio di errore -->
+        {% if error %}
+        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded" role="alert">
+            <p class="font-bold">Errore</p>
+            <p>{{ error }}</p>
+        </div>
+        {% endif %}
+        
+        <!-- Griglia carte -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6" id="results">
             {% for card in results %}
-            <div class="bg-white rounded-lg shadow-md overflow-hidden">
-                <img src="{{ card.immagine_url }}" alt="{{ card.nome_carta }}" class="w-full h-48 object-contain">
+            <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+                <!-- Immagine carta -->
+                <div class="bg-gray-200 p-2">
+                    <img 
+                        src="{{ card.immagine_url }}" 
+                        alt="{{ card.nome_carta }}" 
+                        class="w-full h-64 object-contain"
+                        onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'280\'%3E%3Crect fill=\'%23ddd\' width=\'200\' height=\'280\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' fill=\'%23999\' font-size=\'16\'%3EImmagine non disponibile%3C/text%3E%3C/svg%3E'"
+                    >
+                </div>
+                
+                <!-- Info carta -->
                 <div class="p-4">
-                    <h2 class="text-xl font-bold">#{{ card.numero }} - {{ card.nome_carta }}</h2>
-                    <p class="text-gray-600">Set: {{ card.id_set }}</p>
-                    <p class="text-gray-600">Prezzo stimato: {{ card.prezzo_stimato }} €</p>
-                    <a href="{{ card.cardmarket_url }}" target="_blank" class="mt-2 inline-block bg-blue-500 text-white py-1 px-2 rounded text-sm">Vedi su Cardmarket</a>
-                    <label class="inline-flex items-center mt-2">
-                        <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600" onclick="toggleOwnership(this, '{{ card.card_id }}', '{{ card.nome_carta }}', '{{ card.id_set }}', '{{ card.prezzo_stimato }}')">
-                        <span class="ml-2">Possiedo</span>
+                    <h2 class="text-lg font-bold text-gray-800 mb-2">
+                        <span class="inline-block bg-blue-500 text-white text-xs px-2 py-1 rounded mr-1">
+                            #{{ card.numero }}
+                        </span>
+                        {{ card.nome_carta }}
+                    </h2>
+                    
+                    <p class="text-sm text-gray-600 mb-1">
+                        <strong>Set:</strong> {{ card.id_set }}
+                    </p>
+                    
+                    <p class="text-sm text-gray-600 mb-3">
+                        <strong>Prezzo:</strong> 
+                        <span class="text-green-600 font-semibold">€{{ "%.2f"|format(card.prezzo_stimato) }}</span>
+                    </p>
+                    
+                    <!-- Link Cardmarket -->
+                    {% if card.cardmarket_url and card.cardmarket_url != '#' %}
+                    <a 
+                        href="{{ card.cardmarket_url }}" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        class="inline-block bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded transition-colors mb-3 w-full text-center"
+                    >
+                        Vedi su Cardmarket
+                    </a>
+                    {% endif %}
+                    
+                    <!-- Checkbox possesso -->
+                    <label class="flex items-center cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            class="form-checkbox h-5 w-5 text-blue-600 rounded"
+                            data-card-id="{{ card.card_id }}"
+                            data-card-name="{{ card.nome_carta }}"
+                            data-card-set="{{ card.id_set }}"
+                            data-card-price="{{ card.prezzo_stimato }}"
+                            onchange="toggleOwnership(this)"
+                        >
+                        <span class="ml-2 text-sm font-medium text-gray-700">Possiedo questa carta</span>
                     </label>
                 </div>
             </div>
             {% endfor %}
+            
+            {% if not results and not error %}
+            <div class="col-span-full text-center py-12">
+                <p class="text-gray-500 text-lg">Nessuna carta trovata. Prova a cercare o seleziona un set.</p>
+            </div>
+            {% endif %}
         </div>
     </main>
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        fetch('/api/collection')
-            .then(response => response.json())
-            .then(data => {
-                data.forEach(card => {
-                    const checkbox = document.querySelector(`input[type="checkbox"][onclick*='${card.card_id}']`);
-                    if (checkbox) {
-                        checkbox.checked = true;
-                    }
-                });
-            });
-    });
 
-    function toggleOwnership(checkbox, card_id, name, set_id, price) {
-        const url = checkbox.checked ? '/api/collection/add' : '/api/collection/remove';
-        const data = { card_id, name, set_id, price };
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log(data.message);
-        })
-        .catch(error => {
-            console.error('Errore:', error);
+    <script>
+        // Carica lo stato delle checkbox al caricamento della pagina
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCollectionState();
         });
-    }
-</script>
+
+        /**
+         * Carica lo stato della collezione e aggiorna le checkbox
+         */
+        function loadCollectionState() {
+            fetch('/api/collection')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Errore nel caricamento della collezione');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (!Array.isArray(data)) {
+                        console.error('Formato dati non valido:', data);
+                        return;
+                    }
+                    
+                    // Crea un Set per lookup veloce
+                    const ownedCards = new Set(data.map(card => card.api_card_id));
+                    
+                    // Aggiorna tutte le checkbox
+                    document.querySelectorAll('input[type="checkbox"][data-card-id]').forEach(checkbox => {
+                        const cardId = checkbox.dataset.cardId;
+                        checkbox.checked = ownedCards.has(cardId);
+                    });
+                })
+                .catch(error => {
+                    console.error('Errore nel caricamento della collezione:', error);
+                    showNotification('Errore nel caricamento della collezione', 'error');
+                });
+        }
+
+        /**
+         * Gestisce l'aggiunta/rimozione di una carta dalla collezione
+         */
+        function toggleOwnership(checkbox) {
+            const cardId = checkbox.dataset.cardId;
+            const cardName = checkbox.dataset.cardName;
+            const cardSet = checkbox.dataset.cardSet;
+            const cardPrice = parseFloat(checkbox.dataset.cardPrice) || 0;
+            
+            if (!cardId) {
+                console.error('ID carta mancante');
+                checkbox.checked = !checkbox.checked; // Ripristina stato
+                return;
+            }
+            
+            const url = checkbox.checked ? '/api/collection/add' : '/api/collection/remove';
+            const data = { 
+                card_id: cardId, 
+                name: cardName, 
+                set_id: cardSet, 
+                price: cardPrice 
+            };
+            
+            // Disabilita la checkbox durante la richiesta
+            checkbox.disabled = true;
+            
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Errore nella richiesta');
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log(data.message);
+                showNotification(data.message, 'success');
+                
+                // Ricarica la pagina per aggiornare il valore totale
+                setTimeout(() => location.reload(), 500);
+            })
+            .catch(error => {
+                console.error('Errore:', error);
+                showNotification('Errore nell\'operazione. Riprova.', 'error');
+                
+                // Ripristina lo stato della checkbox in caso di errore
+                checkbox.checked = !checkbox.checked;
+            })
+            .finally(() => {
+                checkbox.disabled = false;
+            });
+        }
+
+        /**
+         * Mostra una notifica temporanea
+         */
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 px-6 py-3 rounded shadow-lg text-white z-50 ${
+                type === 'success' ? 'bg-green-500' : 
+                type === 'error' ? 'bg-red-500' : 
+                'bg-blue-500'
+            }`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+    </script>
 </body>
 </html>

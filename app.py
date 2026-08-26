@@ -69,14 +69,23 @@ def get_all_sets():
 
 
 def extract_price_info(cardmarket):
-    """Restituisce (prezzo, url_cardmarket) usando il primo prezzo disponibile tra quelli noti."""
-    if not cardmarket:
+    """Restituisce (prezzo, url_cardmarket) usando il primo prezzo disponibile tra quelli noti.
+    Gestisce in modo sicuro valori None, stringhe e numeri."""
+    if not cardmarket or not isinstance(cardmarket, dict):
         return 0.0, '#'
+    
     prices = cardmarket.get('prices', {})
+    if not isinstance(prices, dict):
+        return 0.0, cardmarket.get('url', '#')
+    
     for key in ('trendPrice', 'averageSellPrice', 'lowPrice', '1DayAverage'):
         value = prices.get(key)
         if value is not None:
-            return float(value), cardmarket.get('url', '#')
+            try:
+                return float(value), cardmarket.get('url', '#')
+            except (ValueError, TypeError):
+                continue
+    
     return 0.0, cardmarket.get('url', '#')
 
 
@@ -116,85 +125,159 @@ def fetch_all_cards(query):
     return all_cards
 
 
+def extract_card_number(numero):
+    """Estrae il numero dalla stringa del numero carta in modo sicuro.
+    Gestisce formati come '1', '001', 'SV01', 'PROMO 1', ecc."""
+    if not numero or not isinstance(numero, str):
+        return 0
+    
+    match = re.search(r'\d+', numero)
+    if match:
+        try:
+            return int(match.group())
+        except ValueError:
+            return 0
+    return 0
+
+
 def sort_by_number(cards):
-    cards.sort(key=lambda c: int(re.search(r'\d+', c['numero']).group()) if re.search(r'\d+', c['numero']) else 0)
+    """Ordina le carte per numero estratto in modo sicuro."""
+    cards.sort(key=lambda c: extract_card_number(c.get('numero', '')))
     return cards
+
+
+def render_cards_page(cards=None, current_set_id=None, error=None):
+    """Funzione helper per renderizzare la pagina con le carte.
+    Elimina duplicazione di codice tra le varie rotte."""
+    sets = get_all_sets()
+    
+    # Calcola il valore totale della collezione in modo sicuro
+    try:
+        total_value = sum(card.price for card in CollectedCard.query.all() if card.price)
+    except Exception as e:
+        print(f"Errore nel calcolo del valore totale: {e}")
+        total_value = 0.0
+    
+    return render_template(
+        'index.html',
+        sets=sets,
+        results=cards or [],
+        total_value=round(total_value, 2),
+        current_set_id=current_set_id,
+        error=error
+    )
 
 
 @app.route('/')
 def index():
-    sets = get_all_sets()
-    total_value = sum(card.price for card in CollectedCard.query.all())
-    return render_template('index.html', sets=sets, results=[], total_value=total_value, current_set_id=None)
+    return render_cards_page()
 
 
 @app.route('/search', methods=['GET'])
 def search():
-    query = request.args.get('query', '')
-    sets = get_all_sets()
+    query = request.args.get('query', '').strip()
+    
     if not query:
-        return render_template('index.html', sets=sets, results=[], current_set_id=None)
+        return render_cards_page()
 
     raw_cards = fetch_all_cards(f"name:{query}")
     if raw_cards is None:
-        return render_template('index.html', sets=sets, results=[], current_set_id=None,
-                                error='Errore di connessione al database Pokémon')
+        return render_cards_page(error='Errore di connessione al database Pokémon')
 
     cards = sort_by_number([format_card(c) for c in raw_cards])
-    return render_template('index.html', sets=sets, results=cards, current_set_id=None)
+    return render_cards_page(cards=cards)
 
 
 @app.route('/set/<set_id>', methods=['GET'])
 def get_set_cards(set_id):
-    sets = get_all_sets()
-
+    # Usa la cache se disponibile
     if set_id in set_cards_cache:
-        return render_template('index.html', sets=sets, results=set_cards_cache[set_id], current_set_id=set_id)
+        return render_cards_page(cards=set_cards_cache[set_id], current_set_id=set_id)
 
     raw_cards = fetch_all_cards(f"set.id:{set_id}")
     if raw_cards is None:
-        return render_template('index.html', sets=sets, results=[], current_set_id=set_id,
-                                error='Errore di connessione al database Pokémon')
+        return render_cards_page(current_set_id=set_id, error='Errore di connessione al database Pokémon')
 
     cards = sort_by_number([format_card(c) for c in raw_cards])
     set_cards_cache[set_id] = cards
-    return render_template('index.html', sets=sets, results=cards, current_set_id=set_id)
+    return render_cards_page(cards=cards, current_set_id=set_id)
 
 
 @app.route('/api/collection/add', methods=['POST'])
 def add_to_collection():
     data = request.json
-    already_owned = CollectedCard.query.filter_by(api_card_id=data['card_id']).first()
+    
+    # Validazione input
+    if not data or 'card_id' not in data:
+        return jsonify({"error": "Dati mancanti"}), 400
+    
+    card_id = data.get('card_id', '').strip()
+    if not card_id:
+        return jsonify({"error": "ID carta non valido"}), 400
+    
+    # Verifica se già presente
+    already_owned = CollectedCard.query.filter_by(api_card_id=card_id).first()
     if already_owned:
         return jsonify({"message": "Carta già presente in collezione"}), 200
 
+    # Validazione e conversione prezzo
+    try:
+        price = float(data.get('price', 0))
+    except (ValueError, TypeError):
+        price = 0.0
+
     card = CollectedCard(
-        api_card_id=data['card_id'],
-        name=data['name'],
-        set_name=data['set_id'],
-        price=data['price']
+        api_card_id=card_id,
+        name=data.get('name', 'Sconosciuta')[:100],  # Limita lunghezza
+        set_name=data.get('set_id', 'Sconosciuto')[:100],
+        price=price
     )
-    db.session.add(card)
-    db.session.commit()
-    return jsonify({"message": "Carta aggiunta con successo"}), 200
+    
+    try:
+        db.session.add(card)
+        db.session.commit()
+        return jsonify({"message": "Carta aggiunta con successo"}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Errore nell'aggiunta della carta: {e}")
+        return jsonify({"error": "Errore nel salvataggio"}), 500
 
 
 @app.route('/api/collection/remove', methods=['POST'])
 def remove_from_collection():
     data = request.json
-    card = CollectedCard.query.filter_by(api_card_id=data['card_id']).first()
-    if card:
+    
+    # Validazione input
+    if not data or 'card_id' not in data:
+        return jsonify({"error": "Dati mancanti"}), 400
+    
+    card_id = data.get('card_id', '').strip()
+    if not card_id:
+        return jsonify({"error": "ID carta non valido"}), 400
+    
+    card = CollectedCard.query.filter_by(api_card_id=card_id).first()
+    if not card:
+        return jsonify({"message": "Carta non trovata"}), 404
+    
+    try:
         db.session.delete(card)
         db.session.commit()
         return jsonify({"message": "Carta rimossa con successo"}), 200
-    else:
-        return jsonify({"message": "Carta non trovata"}), 404
+    except Exception as e:
+        db.session.rollback()
+        print(f"Errore nella rimozione della carta: {e}")
+        return jsonify({"error": "Errore nella rimozione"}), 500
 
 
 @app.route('/api/collection', methods=['GET'])
 def get_collection():
-    cards = CollectedCard.query.all()
-    return jsonify([{'api_card_id': card.api_card_id, 'name': card.name, 'set_name': card.set_name, 'price': card.price} for card in cards]), 200
+    """Restituisce tutte le carte nella collezione dell'utente."""
+    try:
+        cards = CollectedCard.query.all()
+        return jsonify([card.to_dict() for card in cards]), 200
+    except Exception as e:
+        print(f"Errore nel recupero della collezione: {e}")
+        return jsonify({"error": "Errore nel recupero della collezione"}), 500
 
 
 if __name__ == "__main__":
