@@ -64,6 +64,7 @@ def search():
             # Prende il trendPrice, se non c'è prende l'average, se non c'è mette 0.0
             trend_price = float(trend_price)
             cardmarket_url = cardmarket.get('url', '#')
+            cardmarket_url = cardmarket.get('url', '#')
         else:
             trend_price = 0.0  # FIX 2: Usiamo 0.0 invece di 'N/A' per non far crashare SQLite
             cardmarket_url = '#'
@@ -79,7 +80,6 @@ def search():
             'numero': number
         })
 
-    cards.sort(key=lambda x: int(re.search(r'\d+', x['numero']).group()) if re.search(r'\d+', x['numero']) else 0)
     cards.sort(key=lambda x: int(re.search(r'\d+', x['numero']).group()) if re.search(r'\d+', x['numero']) else 0)
     return render_template('index.html', sets=sets, results=cards, current_set_id=set_id)
 @app.route('/set/<set_id>', methods=['GET'])
@@ -105,7 +105,6 @@ def get_set_cards(set_id):
             prices = cardmarket.get('prices', {})
             trend_price = prices.get('trendPrice') or prices.get('averageSellPrice') or prices.get('lowPrice') or prices.get('1DayAverage') or 0.0
             trend_price = float(trend_price)
-            cardmarket_url = cardmarket.get('url', '#')
         else:
             trend_price = 'N/A'
             cardmarket_url = '#'
