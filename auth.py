@@ -36,10 +36,13 @@ def login():
     
     authorization_endpoint = google_provider_cfg["authorization_endpoint"]
     
+    # Costruisci l'URI di callback corretto
+    redirect_uri = url_for('auth.callback', _external=True)
+    
     # Costruisci la richiesta di autorizzazione
     request_uri = client.prepare_request_uri(
         authorization_endpoint,
-        redirect_uri=request.base_url.replace('/login', '/callback'),
+        redirect_uri=redirect_uri,
         scope=["openid", "email", "profile"],
     )
     
@@ -61,11 +64,14 @@ def callback():
     
     token_endpoint = google_provider_cfg["token_endpoint"]
     
+    # Costruisci l'URI di callback corretto (deve essere lo stesso usato in /login)
+    redirect_uri = url_for('auth.callback', _external=True)
+    
     # Prepara e invia la richiesta per ottenere i token
     token_url, headers, body = client.prepare_token_request(
         token_endpoint,
         authorization_response=request.url,
-        redirect_url=request.base_url,
+        redirect_url=redirect_uri,
         code=code
     )
     

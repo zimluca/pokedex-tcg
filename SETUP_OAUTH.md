@@ -15,9 +15,13 @@
    - **Nome**: Pokédex TCG
    - **Origini JavaScript autorizzate**: 
      - `http://localhost:5000` (per sviluppo)
+     - `http://127.0.0.1:5000` (alternativa)
    - **URI di reindirizzamento autorizzati**:
      - `http://localhost:5000/auth/callback` (per sviluppo)
+     - `http://127.0.0.1:5000/auth/callback` (alternativa)
 5. Salva e copia **Client ID** e **Client Secret**
+
+**IMPORTANTE**: L'URI di reindirizzamento deve corrispondere ESATTAMENTE a quello configurato qui. Se usi `localhost`, configura `localhost`. Se usi `127.0.0.1`, configura `127.0.0.1`. Aggiungi entrambi per sicurezza.
 
 ## 3. Configura le variabili d'ambiente
 
