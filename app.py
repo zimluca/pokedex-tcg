@@ -433,13 +433,16 @@ def get_set_cards(set_id):
 @login_required
 def add_to_collection():
     data = request.json
+    print(f"[API] Richiesta aggiunta carta - User: {current_user.email}, Data: {data}")
     
     # Validazione input
     if not data or 'card_id' not in data:
+        print("[API] ERRORE: Dati mancanti nella richiesta")
         return jsonify({"error": "Dati mancanti"}), 400
     
     card_id = data.get('card_id', '').strip()
     if not card_id:
+        print("[API] ERRORE: ID carta vuoto")
         return jsonify({"error": "ID carta non valido"}), 400
     
     # Verifica se già presente per questo utente
@@ -471,11 +474,14 @@ def add_to_collection():
     try:
         db.session.add(card)
         db.session.commit()
+        print(f"[API] Carta aggiunta con successo: {card_id} per user {current_user.id}")
         return jsonify({"message": "Carta aggiunta con successo", "price": price}), 200
     except Exception as e:
         db.session.rollback()
-        print(f"Errore nell'aggiunta della carta: {e}")
-        return jsonify({"error": "Errore nel salvataggio"}), 500
+        print(f"[API] ERRORE nell'aggiunta della carta: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Errore nel salvataggio: {str(e)}"}), 500
 
 
 @app.route('/api/collection/update_price', methods=['POST'])
@@ -576,7 +582,32 @@ def get_collection_stats():
         return jsonify({"error": "Errore nel recupero delle statistiche"}), 500
 
 
+def preload_popular_sets():
+    """Pre-carica in cache i set più recenti per velocizzare il primo accesso."""
+    with app.app_context():
+        print("[CACHE] Pre-caricamento set popolari...")
+        sets = get_all_sets()
+        
+        # Pre-carica i primi 5 set più recenti
+        for i, set_data in enumerate(sets[:5]):
+            set_id = set_data.get('id')
+            if set_id and set_id not in set_cards_cache:
+                print(f"[CACHE] Pre-caricamento set {i+1}/5: {set_data.get('name')}")
+                raw_cards = fetch_all_cards(f"set.id:{set_id}")
+                if raw_cards:
+                    cards = sort_by_number([format_card(c) for c in raw_cards])
+                    set_cards_cache[set_id] = cards
+        
+        print("[CACHE] Pre-caricamento completato!")
+
+
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+        
+        # Pre-carica i set popolari in un thread separato per non bloccare l'avvio
+        import threading
+        preload_thread = threading.Thread(target=preload_popular_sets, daemon=True)
+        preload_thread.start()
+    
     app.run(debug=True, threaded=True)

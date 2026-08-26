@@ -75,7 +75,7 @@
             {% for set in sets %}
             <li 
                 class="p-2 hover:bg-gray-700 cursor-pointer transition-colors {% if set.id == current_set_id %}bg-blue-800 border-l-4 border-blue-400{% endif %}" 
-                onclick="window.location.href='/set/{{ set.id }}'"
+                onclick="showLoading(); window.location.href='/set/{{ set.id }}'"
             >
                 <div class="flex items-center">
                     {% if set.images and set.images.symbol %}
@@ -100,6 +100,14 @@
     
     <!-- Contenuto principale -->
     <main class="flex-1 p-6 overflow-y-auto">
+        <!-- Indicatore di caricamento -->
+        <div id="loading-indicator" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 flex flex-col items-center">
+                <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mb-4"></div>
+                <p class="text-lg font-semibold text-gray-700">Caricamento carte in corso...</p>
+            </div>
+        </div>
+        
         <h1 class="text-4xl font-bold mb-8 text-gray-800">Il mio Pokédex di Carte</h1>
         
         <!-- Messaggio di errore -->
@@ -210,12 +218,31 @@
     </main>
 
     <script>
+        /**
+         * Mostra l'indicatore di caricamento
+         */
+        function showLoading() {
+            const loader = document.getElementById('loading-indicator');
+            if (loader) loader.classList.remove('hidden');
+        }
+        
+        /**
+         * Nasconde l'indicatore di caricamento
+         */
+        function hideLoading() {
+            const loader = document.getElementById('loading-indicator');
+            if (loader) loader.classList.add('hidden');
+        }
+        
         // Carica lo stato delle checkbox e i valori al caricamento della pagina (solo se autenticato)
         document.addEventListener('DOMContentLoaded', function() {
             {% if user.is_authenticated %}
             loadCollectionState();
             updateCollectionValues();
             {% endif %}
+            
+            // Nascondi il loader quando la pagina è completamente caricata
+            hideLoading();
         });
 
         /**
@@ -322,6 +349,12 @@
                 return;
             }
             
+            // Se sta rimuovendo, procedi direttamente
+            if (!checkbox.checked) {
+                removeCardFromCollection(checkbox, cardId);
+                return;
+            }
+            
             // Se sta aggiungendo e il prezzo non è disponibile, mostra input manuale
             if (checkbox.checked && !priceAvailable) {
                 const manualPriceDiv = document.getElementById(`manual-price-${cardId}`);
@@ -331,32 +364,45 @@
                     manualPriceDiv.classList.remove('hidden');
                     priceInput.focus();
                     
-                    // Aspetta che l'utente inserisca il prezzo
-                    priceInput.addEventListener('blur', function handlePriceInput() {
-                        const manualPrice = parseFloat(priceInput.value) || 0;
-                        cardPrice = manualPrice;
-                        
-                        // Procedi con l'aggiunta
-                        addCardToCollection(checkbox, cardId, cardName, cardSet, cardPrice, manualPriceDiv);
-                        priceInput.removeEventListener('blur', handlePriceInput);
-                    }, { once: true });
+                    // Aggiungi pulsante di conferma se non esiste
+                    let confirmBtn = document.getElementById(`confirm-price-${cardId}`);
+                    if (!confirmBtn) {
+                        confirmBtn = document.createElement('button');
+                        confirmBtn.id = `confirm-price-${cardId}`;
+                        confirmBtn.textContent = 'Conferma';
+                        confirmBtn.className = 'mt-2 w-full bg-green-500 hover:bg-green-600 text-white text-sm py-1 px-2 rounded transition-colors';
+                        confirmBtn.onclick = function() {
+                            const manualPrice = parseFloat(priceInput.value) || 0;
+                            addCardToCollection(checkbox, cardId, cardName, cardSet, manualPrice, manualPriceDiv);
+                        };
+                        manualPriceDiv.appendChild(confirmBtn);
+                    }
                     
                     return;
                 }
             }
             
-            // Se sta rimuovendo o il prezzo è disponibile, procedi normalmente
-            if (checkbox.checked) {
-                addCardToCollection(checkbox, cardId, cardName, cardSet, cardPrice);
-            } else {
-                removeCardFromCollection(checkbox, cardId);
-            }
+            // Se il prezzo è disponibile, procedi normalmente
+            addCardToCollection(checkbox, cardId, cardName, cardSet, cardPrice);
         }
         
         /**
          * Aggiunge una carta alla collezione
          */
         function addCardToCollection(checkbox, cardId, cardName, cardSet, cardPrice, manualPriceDiv = null) {
+            // Validazione dati
+            if (!cardId || !cardName || !cardSet) {
+                console.error('Dati carta incompleti:', { cardId, cardName, cardSet });
+                showNotification('Errore: dati carta incompleti', 'error');
+                checkbox.checked = false;
+                return;
+            }
+            
+            // Assicurati che il prezzo sia un numero valido
+            const validPrice = parseFloat(cardPrice) || 0;
+            
+            console.log('Aggiunta carta:', { cardId, cardName, cardSet, price: validPrice });
+            
             checkbox.disabled = true;
             
             fetch('/api/collection/add', {
@@ -366,25 +412,32 @@
                     card_id: cardId, 
                     name: cardName, 
                     set_id: cardSet, 
-                    price: cardPrice 
+                    price: validPrice 
                 })
             })
             .then(response => {
-                if (!response.ok) throw new Error('Errore nella richiesta');
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Errore nella richiesta');
+                    });
+                }
                 return response.json();
             })
             .then(data => {
+                console.log('Risposta server:', data);
                 showNotification(data.message, 'success');
                 updateCollectionValues();
                 
                 // Nascondi input manuale se presente
                 if (manualPriceDiv) {
                     manualPriceDiv.classList.add('hidden');
+                    const priceInput = manualPriceDiv.querySelector('input');
+                    if (priceInput) priceInput.value = '';
                 }
             })
             .catch(error => {
-                console.error('Errore:', error);
-                showNotification('Errore nell\'operazione. Riprova.', 'error');
+                console.error('Errore completo:', error);
+                showNotification(error.message || 'Errore nell\'operazione. Riprova.', 'error');
                 checkbox.checked = false;
             })
             .finally(() => {
