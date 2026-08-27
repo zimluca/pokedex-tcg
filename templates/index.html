@@ -3,233 +3,1073 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Il mio Pokédex di Carte</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <title>Pokédex TCG</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        /* ====== POKEDEX DEVICE ====== */
+        .pokedex {
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(145deg, #e53935, #c62828);
+            border-radius: 0;
+            padding: 20px;
+            box-shadow: 
+                inset 0 2px 0 rgba(255,255,255,0.3),
+                inset 0 -3px 0 rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            border: none;
+        }
+
+
+        /* Top bar with lights */
+        .pokedex-top {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 5px 10px 15px;
+        }
+
+        .main-light {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #7ef9ff, #00bcd4 60%, #006064);
+            box-shadow: 0 0 20px rgba(0,188,212,0.6), inset 0 -3px 5px rgba(0,0,0,0.3);
+            border: 3px solid #fff;
+            position: relative;
+        }
+        .main-light::after {
+            content: '';
+            position: absolute;
+            top: 8px; left: 10px;
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.8);
+        }
+
+        .small-lights {
+            display: flex;
+            gap: 10px;
+        }
+        .small-light {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.6);
+        }
+        .small-light.red { background: radial-gradient(circle at 35% 35%, #ff8a80, #d32f2f); }
+        .small-light.yellow { background: radial-gradient(circle at 35% 35%, #fff176, #f9a825); }
+        .small-light.green { background: radial-gradient(circle at 35% 35%, #a5d6a7, #388e3c); }
+
+        .pokedex-title {
+            color: #fff;
+            font-size: 1.4rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+            margin-left: auto;
+            font-style: italic;
+        }
+
+        /* ====== SCREENS AREA ====== */
+        .screens {
+            flex: 1;
+            display: flex;
+            gap: 20px;
+            min-height: 0;
+        }
+
+        /* Left screen - expansions */
+        .screen-left {
+            flex: 0 0 300px;
+            background: linear-gradient(145deg, #e8f5e9, #c8e6c9);
+            border-radius: 20px;
+            border: 8px solid #2e7d32;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.2), 0 5px 15px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Right screen - cards */
+        .screen-right {
+            flex: 1;
+            background: linear-gradient(145deg, #e8f5e9, #c8e6c9);
+            border-radius: 20px;
+            border: 8px solid #2e7d32;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.2), 0 5px 15px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .screen-header {
+            background: linear-gradient(180deg, #2e7d32, #1b5e20);
+            color: #fff;
+            padding: 10px 15px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 3px solid #1b5e20;
+        }
+        .screen-header .screen-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .screen-header .screen-title::before {
+            content: '●';
+            color: #4caf50;
+            text-shadow: 0 0 8px #4caf50;
+            font-size: 0.7rem;
+        }
+
+        .screen-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            min-height: 0;
+        }
+        .screen-body::-webkit-scrollbar {
+            width: 8px;
+        }
+        .screen-body::-webkit-scrollbar-track {
+            background: #a5d6a7;
+            border-radius: 4px;
+        }
+        .screen-body::-webkit-scrollbar-thumb {
+            background: #2e7d32;
+            border-radius: 4px;
+        }
+
+        /* ====== LEFT SCREEN: SETS ====== */
+        .set-list {
+            list-style: none;
+        }
+        .set-item {
+            padding: 8px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 4px;
+            border: 2px solid transparent;
+            background: rgba(255,255,255,0.5);
+        }
+        .set-item:hover {
+            background: rgba(255,255,255,0.8);
+            transform: translateX(3px);
+        }
+        .set-item.active {
+            background: #2e7d32;
+            color: #fff;
+            border-color: #1b5e20;
+            box-shadow: 0 2px 8px rgba(46,125,50,0.4);
+        }
+        .set-item .set-name {
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .set-item .set-name img {
+            width: 24px;
+            height: 24px;
+            object-fit: contain;
+        }
+        .set-item .set-meta {
+            font-size: 0.7rem;
+            color: #555;
+            margin-top: 3px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .set-item.active .set-meta {
+            color: #c8e6c9;
+        }
+        .set-progress-bar {
+            height: 4px;
+            background: #a5d6a7;
+            border-radius: 2px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+        .set-progress-bar .fill {
+            height: 100%;
+            background: #4caf50;
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+        .set-item.active .set-progress-bar { background: rgba(255,255,255,0.3); }
+        .set-item.active .set-progress-bar .fill { background: #a5d6a7; }
+
+        /* ====== RIGHT SCREEN: CARDS ====== */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 12px;
+        }
+        .card-tile {
+            background: #fff;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            transition: all 0.2s;
+            border: 2px solid #e0e0e0;
+            position: relative;
+        }
+        .card-tile:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+        }
+        .card-tile.owned {
+            border-color: #4caf50;
+            box-shadow: 0 0 0 2px #4caf50, 0 4px 12px rgba(76,175,80,0.3);
+        }
+        .card-tile .card-img {
+            background: linear-gradient(135deg, #f5f5f5, #e0e0e0);
+            padding: 6px;
+            position: relative;
+        }
+        .card-tile .card-img img {
+            width: 100%;
+            height: 130px;
+            object-fit: contain;
+            display: block;
+        }
+        .card-tile .card-num {
+            position: absolute;
+            top: 8px; left: 8px;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .card-tile .card-info {
+            padding: 8px;
+        }
+        .card-tile .card-name {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 4px;
+            line-height: 1.2;
+            min-height: 2.4em;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .card-tile .card-price {
+            font-size: 0.75rem;
+            color: #2e7d32;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .card-tile .card-price .na {
+            color: #999;
+            font-style: italic;
+            font-weight: 400;
+        }
+        .card-tile .card-actions {
+            display: flex;
+            gap: 4px;
+        }
+        .card-tile .btn-own {
+            flex: 1;
+            padding: 5px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .card-tile .btn-own:hover {
+            background: #c8e6c9;
+        }
+        .card-tile.owned .btn-own {
+            background: #2e7d32;
+            color: #fff;
+        }
+        .card-tile .btn-price {
+            padding: 5px 8px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            background: #e3f2fd;
+            color: #1565c0;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+        }
+        .card-tile .btn-price:hover {
+            background: #bbdefb;
+        }
+
+        /* ====== BOTTOM CONTROLS ====== */
+        .pokedex-bottom {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 15px 10px 5px;
+        }
+
+        .bottom-controls {
+
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 1;
+        }
+
+        .btn-red {
+            background: linear-gradient(180deg, #ef5350, #c62828);
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+        }
+        .btn-red:hover { transform: translateY(-2px); box-shadow: 0 5px 12px rgba(0,0,0,0.4); }
+
+        .btn-green {
+            background: linear-gradient(180deg, #66bb6a, #2e7d32);
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+        }
+        .btn-green:hover { transform: translateY(-2px); box-shadow: 0 5px 12px rgba(0,0,0,0.4); }
+
+        .lang-select {
+            background: #263238;
+            color: #fff;
+            border: 2px solid #455a64;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .total-value {
+            background: #263238;
+            color: #4caf50;
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            border: 2px solid #455a64;
+            white-space: nowrap;
+        }
+
+        /* ====== FILTER BUTTONS ====== */
+        .filter-btns {
+            display: flex;
+            gap: 6px;
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.05);
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+        .filter-btn {
+            padding: 5px 12px;
+            border: none;
+            border-radius: 15px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: #e0e0e0;
+            color: #555;
+            transition: all 0.2s;
+        }
+        .filter-btn.active {
+            background: #2e7d32;
+            color: #fff;
+        }
+
+        /* ====== SEARCH BAR ====== */
+        .search-bar {
+            display: flex;
+            gap: 6px;
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.05);
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+        .search-bar input {
+            flex: 1;
+            padding: 6px 10px;
+            border: 2px solid #a5d6a7;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            outline: none;
+        }
+        .search-bar input:focus {
+            border-color: #2e7d32;
+        }
+        .search-bar button {
+            padding: 6px 12px;
+            background: #2e7d32;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        /* ====== USER INFO ====== */
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0,0,0,0.2);
+            padding: 6px 12px;
+            border-radius: 20px;
+            color: #fff;
+            font-size: 0.8rem;
+        }
+        .user-info img {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+        }
+        .user-info a {
+            color: #ffeb3b;
+            text-decoration: none;
+            font-size: 0.7rem;
+        }
+
+        /* ====== NOTIFICATION ====== */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 10px;
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.85rem;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease;
+        }
+        .notification.success { background: #2e7d32; }
+        .notification.error { background: #c62828; }
+        .notification.info { background: #1565c0; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* ====== LOADING ====== */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+        }
+        .loading-overlay.hidden { display: none; }
+        .loading-box {
+            background: #fff;
+            border-radius: 15px;
+            padding: 25px 40px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .loading-box .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #e0e0e0;
+            border-top-color: #2e7d32;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-box p {
+            color: #333;
+            font-weight: 600;
+        }
+
+        /* ====== EMPTY STATE ====== */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+        .empty-state .pika {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+        .empty-state p {
+            font-size: 0.9rem;
+        }
+
+        /* ====== ERROR ====== */
+        .error-box {
+            background: #ffebee;
+            border: 2px solid #ef5350;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 0.85rem;
+        }
+
+        /* ====== CARD DETAIL MODAL ====== */
+        .card-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        .card-modal-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        .card-modal {
+            background: linear-gradient(145deg, #e8f5e9, #c8e6c9);
+            border-radius: 20px;
+            border: 8px solid #2e7d32;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            width: 90%;
+            max-width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 20px;
+            position: relative;
+            transform: scale(0.9);
+            transition: transform 0.3s;
+        }
+        .card-modal-overlay.open .card-modal {
+            transform: scale(1);
+        }
+        .card-modal-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: #c62828;
+            color: #fff;
+            font-size: 1.2rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .card-modal-close:hover { background: #b71c1c; }
+        .card-modal-content {
+            display: flex;
+            gap: 20px;
+        }
+        .card-modal-image {
+            flex: 0 0 220px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+        }
+        .card-modal-image img {
+            width: 100%;
+            max-width: 220px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .card-modal-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .card-modal-info h2 {
+            color: #1b5e20;
+            font-size: 1.3rem;
+            margin-bottom: 4px;
+        }
+        .card-modal-info .card-modal-meta {
+            color: #555;
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+        }
+        .card-modal-info .card-modal-meta span {
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .price-section {
+            margin-top: 15px;
+        }
+        .price-section h3 {
+            color: #1b5e20;
+            font-size: 0.95rem;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #2e7d32;
+            padding-bottom: 5px;
+        }
+        .price-source {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: #fff;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border: 2px solid #e0e0e0;
+            transition: all 0.2s;
+        }
+        .price-source:hover {
+            border-color: #2e7d32;
+            box-shadow: 0 2px 8px rgba(46,125,50,0.2);
+        }
+        .price-source .source-name {
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .price-source .source-name .source-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: #fff;
+            font-weight: 700;
+        }
+        .price-source .source-name .source-icon.cm { background: #1565c0; }
+        .price-source .source-name .source-icon.tcg { background: #e65100; }
+        .price-source .source-name .source-icon.ebay { background: #00695c; }
+        .price-source .source-price {
+            font-weight: 700;
+            font-size: 1rem;
+            color: #2e7d32;
+        }
+        .price-source .source-price.na {
+            color: #999;
+            font-style: italic;
+            font-weight: 400;
+            font-size: 0.8rem;
+        }
+        .price-source a.source-link {
+            color: #1565c0;
+            text-decoration: none;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .price-source a.source-link:hover { text-decoration: underline; }
+        .card-modal-actions {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        .card-modal-actions .btn-own {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .card-modal-actions .btn-own:hover { background: #c8e6c9; }
+        .card-modal-actions .btn-own.owned {
+            background: #2e7d32;
+            color: #fff;
+        }
+        .card-modal-loading {
+            text-align: center;
+            padding: 40px;
+            color: #555;
+        }
+        .card-modal-loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e0e0e0;
+            border-top-color: #2e7d32;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        /* ====== ADMIN PRICE MANAGEMENT ====== */
+        .admin-price-section {
+            margin-top: 15px;
+            padding: 12px;
+            background: #fff8e1;
+            border: 2px solid #f9a825;
+            border-radius: 8px;
+        }
+        .admin-price-section h3 {
+            color: #e65100;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            border-bottom: 2px solid #f9a825;
+            padding-bottom: 5px;
+        }
+        .admin-price-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .admin-price-row input {
+            flex: 1;
+            padding: 8px 10px;
+            border: 2px solid #f9a825;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            outline: none;
+        }
+        .admin-price-row input:focus {
+            border-color: #e65100;
+        }
+        .btn-admin {
+            padding: 8px 14px;
+            background: #e65100;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-admin:hover {
+            background: #bf360c;
+        }
+        .admin-price-hint {
+            font-size: 0.7rem;
+            color: #795548;
+            margin-top: 6px;
+        }
+
+
+        /* ====== RESPONSIVE / MOBILE ====== */
+        /* Tablet e schermi medi */
+        @media (max-width: 900px) {
+            .screens { flex-direction: column; }
+            .screen-left { flex: 0 0 220px; }
+            .pokedex { height: auto; min-height: 100vh; overflow-y: auto; }
+            .pokedex-title { display: none; }
+            .card-modal-content { flex-direction: column; }
+            .card-modal-image { flex: 0 0 auto; }
+            .card-modal-image img { max-width: 180px; }
+            .pokedex-bottom { flex-wrap: wrap; }
+            .bottom-controls { flex-wrap: wrap; }
+        }
+
+        /* Telefono (max 600px) */
+        @media (max-width: 600px) {
+            .pokedex { padding: 10px; }
+            .pokedex-top { gap: 8px; padding: 5px 5px 10px; }
+            .main-light { width: 40px; height: 40px; }
+            .small-light { width: 14px; height: 14px; }
+            .user-info { font-size: 0.7rem; padding: 4px 8px; }
+            .user-info img { width: 22px; height: 22px; }
+
+            .screens { gap: 10px; }
+            .screen-left { flex: 0 0 180px; border-width: 5px; border-radius: 14px; }
+            .screen-right { border-width: 5px; border-radius: 14px; }
+            .screen-header { padding: 8px 10px; font-size: 0.8rem; }
+            .screen-body { padding: 8px; }
+
+            /* Griglia carte: 2 colonne su telefono */
+            .cards-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+            .card-tile .card-img img { height: 100px; }
+            .card-tile .card-name { font-size: 0.7rem; }
+            .card-tile .card-price { font-size: 0.7rem; }
+
+            /* Set list più compatta */
+            .set-item { padding: 6px 8px; }
+            .set-item .set-name { font-size: 0.75rem; }
+            .set-item .set-meta { font-size: 0.65rem; }
+
+            /* Bottom controls */
+            .pokedex-bottom { padding: 10px 5px 5px; gap: 10px; }
+            .bottom-controls { gap: 8px; }
+            .btn-red, .btn-green { padding: 8px 14px; font-size: 0.75rem; }
+            .lang-select { padding: 6px 8px; font-size: 0.7rem; }
+            .total-value { padding: 6px 10px; font-size: 0.75rem; }
+
+            /* Modal */
+            .card-modal { padding: 15px; border-width: 5px; }
+            .card-modal-image img { max-width: 140px; }
+            .card-modal-info h2 { font-size: 1.1rem; }
+            .price-source { padding: 8px 10px; }
+            .price-source .source-name { font-size: 0.75rem; }
+            .price-source .source-price { font-size: 0.9rem; }
+            .admin-price-row { flex-direction: column; align-items: stretch; }
+            .btn-admin { width: 100%; }
+
+            /* Search bar */
+            .search-bar { padding: 6px 8px; }
+            .search-bar input { font-size: 0.75rem; padding: 5px 8px; }
+            .search-bar button { font-size: 0.75rem; padding: 5px 10px; }
+            .filter-btns { padding: 6px 8px; }
+            .filter-btn { padding: 4px 10px; font-size: 0.65rem; }
+        }
+
+        /* Telefono molto piccolo (max 380px) */
+        @media (max-width: 380px) {
+            .cards-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+            .card-tile .card-img img { height: 85px; }
+            .screen-left { flex: 0 0 150px; }
+            .main-light { width: 32px; height: 32px; }
+            .small-lights { gap: 5px; }
+            .small-light { width: 12px; height: 12px; }
+        }
+    </style>
+
+
 </head>
-<body class="bg-gray-100 h-screen flex">
-    <!-- Sidebar con lista set -->
-    <aside class="w-72 bg-gray-800 text-white h-screen overflow-y-auto">
-        <div class="p-4 border-b border-gray-700">
-            <h2 class="text-2xl font-bold mb-3">Pokédex TCG</h2>
-            
-            <!-- Info utente / Login -->
+<body>
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-box">
+            <div class="spinner"></div>
+            <p>Caricamento carte in corso...</p>
+        </div>
+    </div>
+
+    <!-- ====== POKEDEX DEVICE ====== -->
+    <div class="pokedex">
+        <!-- Top bar -->
+        <div class="pokedex-top">
+            <div class="main-light"></div>
+            <div class="small-lights">
+                <div class="small-light red"></div>
+                <div class="small-light yellow"></div>
+                <div class="small-light green"></div>
+            </div>
+            <div class="pokedex-title">POKÉDEX TCG</div>
             {% if user.is_authenticated %}
-            <div class="flex items-center gap-3 bg-gray-700 rounded p-2">
+            <div class="user-info">
                 {% if user.picture %}
-                <img src="{{ user.picture }}" alt="{{ user.name }}" class="w-10 h-10 rounded-full">
+                <img src="{{ user.picture }}" alt="{{ user.name }}">
                 {% endif %}
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-semibold truncate">{{ user.name or user.email }}</p>
-                    <a href="{{ url_for('auth.logout') }}" class="text-xs text-blue-300 hover:text-blue-100">Logout</a>
-                </div>
+                <span>{{ user.name or user.email }}</span>
+                <a href="{{ url_for('auth.logout') }}">Logout</a>
             </div>
             {% else %}
-            <a href="{{ url_for('auth.login') }}" class="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-2 px-4 rounded transition-colors">
-                <span class="font-semibold">Accedi con Google</span>
-            </a>
-            <p class="text-xs text-gray-400 mt-2 text-center">Accedi per salvare la tua collezione</p>
+            <a href="{{ url_for('auth.login') }}" class="btn-red" style="text-decoration:none; font-size:0.75rem; padding:8px 15px;">Accedi</a>
             {% endif %}
         </div>
-        
-        <!-- Form di ricerca -->
-        <div class="px-4 mb-4">
-            <form class="flex" method="GET" action="/search">
-                <input 
-                    type="text" 
-                    name="query" 
-                    class="border border-gray-300 rounded-l-md py-2 px-4 w-full text-gray-800" 
-                    placeholder="Cerca carta..."
-                    required
-                >
-                <button 
-                    type="submit" 
-                    class="bg-blue-500 hover:bg-blue-600 text-white rounded-r-md py-2 px-4 transition-colors"
-                >
-                    Cerca
-                </button>
-            </form>
-        </div>
-        
-        <!-- Selezione lingua -->
-        {% if user.is_authenticated %}
-        <div class="px-4 mb-4">
-            <label class="text-xs text-gray-400 block mb-1">Lingua espansioni:</label>
-            <select 
-                id="language-selector" 
-                class="w-full bg-gray-700 text-white border border-gray-600 rounded px-3 py-2 text-sm"
-                onchange="changeLanguage(this.value)"
-            >
-                <option value=""{% if not user_language %} selected{% endif %}>Tutte le lingue</option>
-                <option value="en"{% if user_language == 'en' %} selected{% endif %}>English</option>
-                <option value="it"{% if user_language == 'it' %} selected{% endif %}>Italiano</option>
-                <option value="fr"{% if user_language == 'fr' %} selected{% endif %}>Français</option>
-                <option value="de"{% if user_language == 'de' %} selected{% endif %}>Deutsch</option>
-                <option value="es"{% if user_language == 'es' %} selected{% endif %}>Español</option>
-                <option value="ja"{% if user_language == 'ja' %} selected{% endif %}>日本語</option>
-            </select>
-        </div>
-        {% endif %}
-        
-        <!-- Valore totale collezione (solo se autenticato) -->
-        {% if user.is_authenticated %}
-        <div class="px-4 mb-4">
-            <p class="text-lg font-bold bg-green-700 rounded p-2 text-center">
-                Valore Totale: €{{ "%.2f"|format(total_value) }}
-            </p>
-        </div>
-        {% endif %}
-        
-        <!-- Lista set -->
-        <ul>
-            {% for set in sets %}
-            <li 
-                class="p-2 hover:bg-gray-700 cursor-pointer transition-colors {% if set.id == current_set_id %}bg-blue-800 border-l-4 border-blue-400{% endif %}" 
-                onclick="showLoading(); window.location.href='/set/{{ set.id }}'"
-            >
-                <div class="flex items-center">
-                    {% if set.images and set.images.symbol %}
-                    <img 
-                        src="{{ set.images.symbol }}" 
-                        alt="{{ set.name }} Logo" 
-                        class="h-8 w-8 mr-2"
-                        onerror="this.style.display='none'"
-                    >
+
+        <!-- Screens -->
+        <div class="screens">
+            <!-- LEFT SCREEN: Expansions -->
+            <div class="screen-left">
+                <div class="screen-header">
+                    <span class="screen-title">ESPANSIONI</span>
+                    <span style="font-size:0.7rem; opacity:0.8;">{{ sets|length }}</span>
+                </div>
+                <div class="screen-body">
+                    <ul class="set-list">
+                        {% for set in sets %}
+                        <li 
+                            class="set-item {% if set.id == current_set_id %}active{% endif %}"
+                            onclick="showLoading(); window.location.href='/set/{{ set.id }}'"
+                        >
+                            <div class="set-name">
+                                {% if set.images and set.images.symbol %}
+                                <img src="{{ set.images.symbol }}" alt="" onerror="this.style.display='none'">
+                                {% endif %}
+                                <span>{{ set.name }}</span>
+                            </div>
+                            <div class="set-meta">
+                                <span>€{{ "%.2f"|format(set_values.get(set.id, 0.0)) }}</span>
+                                <span>{{ set_counts.get(set.id, 0) }}/{{ set.total or set.printedTotal or 0 }}</span>
+                            </div>
+                            {% set set_total = set.total or set.printedTotal or 0 %}
+                            {% set set_owned = set_counts.get(set.id, 0) %}
+                            {% set set_pct = ((set_owned / set_total) * 100) if set_total else 0 %}
+                            <div class="set-progress-bar">
+                                <div class="fill" style="width: {{ [set_pct, 100]|min }}%"></div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <!-- RIGHT SCREEN: Cards -->
+            <div class="screen-right">
+                <div class="screen-header">
+                    <span class="screen-title">
+                        {% if current_set_id %}CARTE{% else %}RICERCA{% endif %}
+                    </span>
+                    {% if current_set_id and current_set_total %}
+                    <span style="font-size:0.7rem; opacity:0.8;">
+                        {{ current_set_owned }}/{{ current_set_total }} ({{ "%.0f"|format(((current_set_owned / current_set_total) * 100) if current_set_total else 0) }}%)
+                    </span>
                     {% endif %}
-                    <div class="flex-1">
-                        <div class="text-sm">{{ set.name }}</div>
-                        <div class="text-xs text-gray-400">
-                            Valore: €<span id="valore-set-{{ set.id }}">{{ "%.2f"|format(set_values.get(set.id, 0.0)) }}</span>
+                </div>
+
+                <!-- Search bar -->
+                <div class="search-bar">
+                    <form class="flex" method="GET" action="/search" style="display:flex; gap:6px; width:100%;">
+                        <input type="text" name="query" placeholder="Cerca carta..." required>
+                        <button type="submit">Cerca</button>
+                    </form>
+                </div>
+
+                <!-- Filter buttons -->
+                <div class="filter-btns">
+                    <button type="button" data-filter="all" class="filter-btn active">Tutte</button>
+                    <button type="button" data-filter="owned" class="filter-btn">Possedute</button>
+                    <button type="button" data-filter="missing" class="filter-btn">Mancanti</button>
+                </div>
+
+                <!-- Error message -->
+                {% if error %}
+                <div class="error-box">
+                    <strong>Errore:</strong> {{ error }}
+                </div>
+                {% endif %}
+
+                <!-- Cards grid -->
+                <div class="screen-body">
+                    <div class="cards-grid" id="results">
+                        {% for card in results %}
+                        <div class="card-tile" data-card-id="{{ card.card_id }}" data-set-id="{{ card.id_set }}" onclick="openCardModal('{{ card.card_id }}')" style="cursor:pointer;">
+                            <div class="card-img">
+
+                                <span class="card-num">#{{ card.numero }}</span>
+                                <img 
+                                    src="{{ card.immagine_url }}" 
+                                    alt="{{ card.nome_carta }}"
+                                    onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'280\'%3E%3Crect fill=\'%23ddd\' width=\'200\' height=\'280\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' fill=\'%23999\' font-size=\'16\'%3EImmagine%3C/text%3E%3C/svg%3E'"
+                                >
+                            </div>
+                            <div class="card-info">
+                                <div class="card-name">{{ card.nome_carta }}</div>
+                                <div class="card-price">
+                                    {% if card.prezzo_disponibile %}
+                                    €{{ "%.2f"|format(card.prezzo_stimato) }}
+                                    {% else %}
+                                    <span class="na">Non disponibile</span>
+                                    {% endif %}
+                                </div>
+                                <div class="card-actions">
+                                    {% if user.is_authenticated %}
+                                    <button 
+                                        type="button" 
+                                        class="btn-own"
+                                        data-card-id="{{ card.card_id }}"
+                                        data-card-name="{{ card.nome_carta }}"
+                                        data-card-set="{{ card.id_set }}"
+                                        data-card-price="{{ card.prezzo_stimato }}"
+                                        onclick="toggleOwnership(this)"
+                                    >
+                                        Possiedo
+                                    </button>
+                                    {% else %}
+                                    <a href="{{ url_for('auth.login') }}" class="btn-own" style="text-align:center; text-decoration:none;">Accedi</a>
+                                    {% endif %}
+                                    {% if card.cardmarket_url and card.cardmarket_url != '#' %}
+                                    <a href="{{ card.cardmarket_url }}" target="_blank" rel="noopener noreferrer" class="btn-price" title="Vedi prezzo online">€</a>
+                                    {% endif %}
+                                </div>
+                            </div>
                         </div>
+                        {% endfor %}
+
+                        {% if not results and not error %}
+                        <div class="empty-state" style="grid-column: 1 / -1;">
+                            <div class="pika">⚡</div>
+                            <p>Nessuna carta trovata.<br>Seleziona un'espansione o cerca una carta.</p>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
-            </li>
-            {% endfor %}
-        </ul>
-    </aside>
-    
-    <!-- Contenuto principale -->
-    <main class="flex-1 p-6 overflow-y-auto">
-        <!-- Indicatore di caricamento -->
-        <div id="loading-indicator" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-white rounded-lg p-6 flex flex-col items-center">
-                <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mb-4"></div>
-                <p class="text-lg font-semibold text-gray-700">Caricamento carte in corso...</p>
             </div>
         </div>
-        
-        <h1 class="text-4xl font-bold mb-8 text-gray-800">Il mio Pokédex di Carte</h1>
-        
-        <!-- Messaggio di errore -->
-        {% if error %}
-        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded" role="alert">
-            <p class="font-bold">Errore</p>
-            <p>{{ error }}</p>
+
+        <!-- Bottom controls -->
+        <div class="pokedex-bottom">
+            <div class="bottom-controls">
+
+                {% if user.is_authenticated %}
+                <select id="language-selector" class="lang-select" onchange="changeLanguage(this.value)">
+                    <option value="en"{% if user_language == 'en' or not user_language %} selected{% endif %}>English</option>
+                    <option value="it"{% if user_language == 'it' %} selected{% endif %}>Italiano</option>
+                </select>
+                <div class="total-value" id="total-value">€{{ "%.2f"|format(total_value) }}</div>
+                {% endif %}
+                <button class="btn-green" onclick="window.location.href='/'">Home</button>
+            </div>
         </div>
-        {% endif %}
-        
-        <!-- Griglia carte -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6" id="results">
-            {% for card in results %}
-            <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
-                <!-- Immagine carta -->
-                <div class="bg-gray-200 p-2">
-                    <img 
-                        src="{{ card.immagine_url }}" 
-                        alt="{{ card.nome_carta }}" 
-                        class="w-full h-64 object-contain"
-                        onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'280\'%3E%3Crect fill=\'%23ddd\' width=\'200\' height=\'280\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' fill=\'%23999\' font-size=\'16\'%3EImmagine non disponibile%3C/text%3E%3C/svg%3E'"
-                    >
-                </div>
-                
-                <!-- Info carta -->
-                <div class="p-4">
-                    <h2 class="text-lg font-bold text-gray-800 mb-2">
-                        <span class="inline-block bg-blue-500 text-white text-xs px-2 py-1 rounded mr-1">
-                            #{{ card.numero }}
-                        </span>
-                        {{ card.nome_carta }}
-                    </h2>
-                    
-                    <p class="text-sm text-gray-600 mb-1">
-                        <strong>Set:</strong> {{ card.id_set }}
-                    </p>
-                    
-                    <p class="text-sm text-gray-600 mb-3">
-                        <strong>Prezzo:</strong> 
-                        {% if card.prezzo_disponibile %}
-                        <span class="text-green-600 font-semibold">€{{ "%.2f"|format(card.prezzo_stimato) }}</span>
-                        {% else %}
-                        <span class="text-gray-400 italic">Non disponibile</span>
-                        {% endif %}
-                    </p>
-                    
-                    <!-- Link Cardmarket/TCGPlayer -->
-                    {% if card.cardmarket_url and card.cardmarket_url != '#' %}
-                    <a 
-                        href="{{ card.cardmarket_url }}" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        class="inline-block bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded transition-colors mb-3 w-full text-center"
-                    >
-                        {% if card.prezzo_disponibile %}
-                        Vedi prezzo online
-                        {% else %}
-                        Cerca prezzo online
-                        {% endif %}
-                    </a>
-                    {% endif %}
-                    
-                    <!-- Checkbox possesso (solo se autenticato) -->
-                    {% if user.is_authenticated %}
-                    <label class="flex items-center cursor-pointer mb-2">
-                        <input 
-                            type="checkbox" 
-                            class="form-checkbox h-5 w-5 text-blue-600 rounded"
-                            data-card-id="{{ card.card_id }}"
-                            data-card-name="{{ card.nome_carta }}"
-                            data-card-set="{{ card.id_set }}"
-                            data-card-price="{{ card.prezzo_stimato }}"
-                            data-price-available="{{ card.prezzo_disponibile }}"
-                            onchange="toggleOwnership(this)"
-                        >
-                        <span class="ml-2 text-sm font-medium text-gray-700">Possiedo questa carta</span>
-                    </label>
-                    {% else %}
-                    <a href="{{ url_for('auth.login') }}" class="block text-center bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm py-2 px-3 rounded transition-colors">
-                        Accedi per salvare
-                    </a>
-                    {% endif %}
-                    
-                    <!-- Input prezzo manuale (solo se prezzo non disponibile e autenticato) -->
-                    {% if user.is_authenticated and not card.prezzo_disponibile %}
-                    <div class="mt-2 hidden" id="manual-price-{{ card.card_id }}">
-                        <label class="text-xs text-gray-600 block mb-1">Inserisci prezzo manualmente (€):</label>
-                        <input 
-                            type="number" 
-                            step="0.01" 
-                            min="0"
-                            placeholder="0.00"
-                            class="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-                            id="price-input-{{ card.card_id }}"
-                        >
-                    </div>
-                    {% endif %}
+    </div>
+
+    <!-- ====== CARD DETAIL MODAL ====== -->
+    <div id="card-modal-overlay" class="card-modal-overlay" onclick="closeCardModal(event)">
+        <div class="card-modal">
+            <button class="card-modal-close" onclick="closeCardModal()">×</button>
+            <div id="card-modal-content" class="card-modal-content">
+                <div class="card-modal-loading">
+                    <div class="spinner"></div>
+                    <p>Caricamento dettagli carta...</p>
                 </div>
             </div>
-            {% endfor %}
-            
-            {% if not results and not error %}
-            <div class="col-span-full text-center py-12">
-                <p class="text-gray-500 text-lg">Nessuna carta trovata. Prova a cercare o seleziona un set.</p>
-            </div>
-            {% endif %}
         </div>
-    </main>
+    </div>
 
     <script>
-        /**
-         * Cambia la lingua preferita dell'utente
-         */
+
+        let currentCardFilter = 'all';
+
+        // ====== LANGUAGE ======
         function changeLanguage(language) {
             fetch('/api/preferences/language', {
                 method: 'POST',
@@ -239,7 +1079,6 @@
             .then(response => response.json())
             .then(data => {
                 showNotification('Lingua aggiornata', 'success');
-                // Ricarica la pagina per applicare il filtro
                 setTimeout(() => location.reload(), 500);
             })
             .catch(error => {
@@ -247,194 +1086,111 @@
                 showNotification('Errore nell\'aggiornamento della lingua', 'error');
             });
         }
-        
-        /**
-         * Mostra l'indicatore di caricamento
-         */
+
+        // ====== LOADING ======
         function showLoading() {
-            const loader = document.getElementById('loading-indicator');
+            const loader = document.getElementById('loading-overlay');
             if (loader) loader.classList.remove('hidden');
         }
-        
-        /**
-         * Nasconde l'indicatore di caricamento
-         */
         function hideLoading() {
-            const loader = document.getElementById('loading-indicator');
+            const loader = document.getElementById('loading-overlay');
             if (loader) loader.classList.add('hidden');
         }
-        
-        // Carica lo stato delle checkbox e i valori al caricamento della pagina (solo se autenticato)
+
+        // ====== DOM READY ======
         document.addEventListener('DOMContentLoaded', function() {
             {% if user.is_authenticated %}
             loadCollectionState();
             updateCollectionValues();
             {% endif %}
-            
-            // Nascondi il loader quando la pagina è completamente caricata
+
+            // Filter buttons
+            document.querySelectorAll('.filter-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    currentCardFilter = this.dataset.filter;
+                    document.querySelectorAll('.filter-btn').forEach(btn => {
+                        btn.classList.toggle('active', btn === this);
+                    });
+                    applyCardFilter(currentCardFilter);
+                });
+            });
+
             hideLoading();
         });
 
-        /**
-         * Carica lo stato della collezione e aggiorna le checkbox
-         */
+        // ====== COLLECTION ======
+        function getCurrentLanguage() {
+            const selector = document.getElementById('language-selector');
+            return selector ? selector.value : 'en';
+        }
+
         function loadCollectionState() {
-            fetch('/api/collection')
+            const language = getCurrentLanguage();
+            fetch(`/api/collection?language=${language}`)
                 .then(response => {
                     if (!response.ok) {
-                        // Se l'utente non è autenticato o c'è un errore, non mostrare notifica
-                        if (response.status === 401) {
-                            console.log('Utente non autenticato');
-                            return null;
-                        }
+                        if (response.status === 401) return null;
                         throw new Error('Errore nel caricamento della collezione');
                     }
                     return response.json();
                 })
                 .then(data => {
-                    if (!data) return; // Utente non autenticato
-                    
-                    if (!Array.isArray(data)) {
-                        console.error('Formato dati non valido:', data);
-                        return;
-                    }
-                    
-                    // Crea un Set per lookup veloce
+                    if (!data) return;
+                    if (!Array.isArray(data)) return;
                     const ownedCards = new Set(data.map(card => card.api_card_id));
-                    
-                    // Aggiorna tutte le checkbox
-                    document.querySelectorAll('input[type="checkbox"][data-card-id]').forEach(checkbox => {
-                        const cardId = checkbox.dataset.cardId;
-                        checkbox.checked = ownedCards.has(cardId);
+                    document.querySelectorAll('.card-tile').forEach(tile => {
+                        setCardOwnedState(tile.dataset.cardId, ownedCards.has(tile.dataset.cardId));
                     });
+                    applyCardFilter(currentCardFilter);
                 })
-                .catch(error => {
-                    console.error('Errore nel caricamento della collezione:', error);
-                    // Non mostrare notifica per evitare spam
-                });
+                .catch(error => console.error('Errore collezione:', error));
         }
 
-        /**
-         * Aggiorna i valori della collezione (totale e per set)
-         */
         function updateCollectionValues() {
             fetch('/api/collection/stats')
                 .then(response => {
-                    if (!response.ok) {
-                        // Se l'utente non è autenticato, non fare nulla
-                        if (response.status === 401) {
-                            console.log('Utente non autenticato');
-                            return null;
-                        }
-                        throw new Error('Errore nel caricamento delle statistiche');
-                    }
+                    if (!response.ok) return null;
                     return response.json();
                 })
                 .then(data => {
-                    if (!data) return; // Utente non autenticato
-                    
-                    // Aggiorna valore totale
-                    const totalElement = document.querySelector('.bg-green-700 p');
+                    if (!data) return;
+                    const totalElement = document.getElementById('total-value');
                     if (totalElement && data.total_value !== undefined) {
-                        totalElement.textContent = `Valore Totale: €${data.total_value.toFixed(2)}`;
-                    }
-                    
-                    // Aggiorna valori per set
-                    if (data.set_values && typeof data.set_values === 'object') {
-                        Object.keys(data.set_values).forEach(setId => {
-                            const setValueSpan = document.getElementById(`valore-set-${setId}`);
-                            if (setValueSpan) {
-                                setValueSpan.textContent = data.set_values[setId].toFixed(2);
-                            }
-                        });
-                        
-                        // Resetta i set che non hanno carte
-                        document.querySelectorAll('[id^="valore-set-"]').forEach(span => {
-                            const setId = span.id.replace('valore-set-', '');
-                            if (!data.set_values[setId]) {
-                                span.textContent = '0.00';
-                            }
-                        });
+                        totalElement.textContent = `€${data.total_value.toFixed(2)}`;
                     }
                 })
-                .catch(error => {
-                    console.error('Errore nel caricamento delle statistiche:', error);
-                    // Non mostrare notifica per evitare spam
-                });
+                .catch(error => console.error('Errore statistiche:', error));
         }
 
-        /**
-         * Gestisce l'aggiunta/rimozione di una carta dalla collezione
-         */
-        function toggleOwnership(checkbox) {
-            const cardId = checkbox.dataset.cardId;
-            const cardName = checkbox.dataset.cardName;
-            const cardSet = checkbox.dataset.cardSet;
-            const priceAvailable = checkbox.dataset.priceAvailable === 'True';
-            let cardPrice = parseFloat(checkbox.dataset.cardPrice) || 0;
-            
+        // ====== OWNERSHIP ======
+        function toggleOwnership(button) {
+            const cardId = button.dataset.cardId;
+            const cardName = button.dataset.cardName;
+            const cardSet = button.dataset.cardSet;
+            const cardPrice = parseFloat(button.dataset.cardPrice) || 0;
+            const isOwned = button.closest('.card-tile').classList.contains('owned');
+
             if (!cardId) {
                 console.error('ID carta mancante');
-                checkbox.checked = !checkbox.checked;
                 return;
             }
-            
-            // Se sta rimuovendo, procedi direttamente
-            if (!checkbox.checked) {
-                removeCardFromCollection(checkbox, cardId);
-                return;
+
+            if (isOwned) {
+                removeCardFromCollection(button, cardId);
+            } else {
+                addCardToCollection(button, cardId, cardName, cardSet, cardPrice);
             }
-            
-            // Se sta aggiungendo e il prezzo non è disponibile, mostra input manuale
-            if (checkbox.checked && !priceAvailable) {
-                const manualPriceDiv = document.getElementById(`manual-price-${cardId}`);
-                const priceInput = document.getElementById(`price-input-${cardId}`);
-                
-                if (manualPriceDiv && priceInput) {
-                    manualPriceDiv.classList.remove('hidden');
-                    priceInput.focus();
-                    
-                    // Aggiungi pulsante di conferma se non esiste
-                    let confirmBtn = document.getElementById(`confirm-price-${cardId}`);
-                    if (!confirmBtn) {
-                        confirmBtn = document.createElement('button');
-                        confirmBtn.id = `confirm-price-${cardId}`;
-                        confirmBtn.textContent = 'Conferma';
-                        confirmBtn.className = 'mt-2 w-full bg-green-500 hover:bg-green-600 text-white text-sm py-1 px-2 rounded transition-colors';
-                        confirmBtn.onclick = function() {
-                            const manualPrice = parseFloat(priceInput.value) || 0;
-                            addCardToCollection(checkbox, cardId, cardName, cardSet, manualPrice, manualPriceDiv);
-                        };
-                        manualPriceDiv.appendChild(confirmBtn);
-                    }
-                    
-                    return;
-                }
-            }
-            
-            // Se il prezzo è disponibile, procedi normalmente
-            addCardToCollection(checkbox, cardId, cardName, cardSet, cardPrice);
         }
-        
-        /**
-         * Aggiunge una carta alla collezione
-         */
-        function addCardToCollection(checkbox, cardId, cardName, cardSet, cardPrice, manualPriceDiv = null) {
-            // Validazione dati
+
+        function addCardToCollection(button, cardId, cardName, cardSet, cardPrice) {
             if (!cardId || !cardName || !cardSet) {
-                console.error('Dati carta incompleti:', { cardId, cardName, cardSet });
                 showNotification('Errore: dati carta incompleti', 'error');
-                checkbox.checked = false;
                 return;
             }
-            
-            // Assicurati che il prezzo sia un numero valido
             const validPrice = parseFloat(cardPrice) || 0;
-            
-            console.log('Aggiunta carta:', { cardId, cardName, cardSet, price: validPrice });
-            
-            checkbox.disabled = true;
-            
+            const language = getCurrentLanguage();
+            button.disabled = true;
+
             fetch('/api/collection/add', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -442,128 +1198,317 @@
                     card_id: cardId, 
                     name: cardName, 
                     set_id: cardSet, 
-                    price: validPrice 
+                    price: validPrice,
+                    language: language
                 })
             })
             .then(response => {
-                // Gestisci redirect per utenti non autenticati
-                if (response.status === 401) {
-                    return response.json().then(data => {
-                        if (data.redirect) {
-                            showNotification('Devi effettuare il login per salvare le carte', 'error');
-                            setTimeout(() => {
-                                window.location.href = data.redirect;
-                            }, 1500);
-                        }
-                        throw new Error('Non autenticato');
-                    });
-                }
-                
-                if (!response.ok) {
-                    return response.json().then(data => {
-                        throw new Error(data.error || 'Errore nella richiesta');
-                    }).catch(() => {
-                        throw new Error('Errore nella richiesta');
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Risposta server:', data);
-                showNotification(data.message, 'success');
-                updateCollectionValues();
-                
-                // Nascondi input manuale se presente
-                if (manualPriceDiv) {
-                    manualPriceDiv.classList.add('hidden');
-                    const priceInput = manualPriceDiv.querySelector('input');
-                    if (priceInput) priceInput.value = '';
-                }
-            })
-            .catch(error => {
-                console.error('Errore completo:', error);
-                showNotification(error.message || 'Errore nell\'operazione. Riprova.', 'error');
-                checkbox.checked = false;
-            })
-            .finally(() => {
-                checkbox.disabled = false;
-            });
-        }
-        
-        /**
-         * Rimuove una carta dalla collezione
-         */
-        function removeCardFromCollection(checkbox, cardId) {
-            checkbox.disabled = true;
-            
-            fetch('/api/collection/remove', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ card_id: cardId })
-            })
-            .then(response => {
-                // Gestisci redirect per utenti non autenticati
                 if (response.status === 401) {
                     return response.json().then(data => {
                         if (data.redirect) {
                             showNotification('Devi effettuare il login', 'error');
-                            setTimeout(() => {
-                                window.location.href = data.redirect;
-                            }, 1500);
+                            setTimeout(() => window.location.href = data.redirect, 1500);
                         }
                         throw new Error('Non autenticato');
                     });
                 }
-                
                 if (!response.ok) {
-                    return response.json().catch(() => {
-                        throw new Error('Errore nella richiesta');
-                    });
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Errore nella richiesta');
+                    }).catch(() => { throw new Error('Errore nella richiesta'); });
                 }
                 return response.json();
             })
             .then(data => {
                 showNotification(data.message, 'success');
                 updateCollectionValues();
-                
-                // Nascondi e resetta input manuale se presente
-                const manualPriceDiv = document.getElementById(`manual-price-${cardId}`);
-                const priceInput = document.getElementById(`price-input-${cardId}`);
-                if (manualPriceDiv) {
-                    manualPriceDiv.classList.add('hidden');
-                }
-                if (priceInput) {
-                    priceInput.value = '';
-                }
+                setCardOwnedState(cardId, true);
+                applyCardFilter(currentCardFilter);
             })
             .catch(error => {
                 console.error('Errore:', error);
-                showNotification('Errore nell\'operazione. Riprova.', 'error');
-                checkbox.checked = true;
+                showNotification(error.message || 'Errore nell\'aggiunta della carta', 'error');
             })
             .finally(() => {
-                checkbox.disabled = false;
+                button.disabled = false;
             });
         }
 
-        /**
-         * Mostra una notifica temporanea
-         */
+        function removeCardFromCollection(button, cardId) {
+            const language = getCurrentLanguage();
+            button.disabled = true;
+
+            fetch('/api/collection/remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ card_id: cardId, language: language })
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    return response.json().then(data => {
+                        if (data.redirect) {
+                            showNotification('Devi effettuare il login', 'error');
+                            setTimeout(() => window.location.href = data.redirect, 1500);
+                        }
+                        throw new Error('Non autenticato');
+                    });
+                }
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Errore nella richiesta');
+                    }).catch(() => { throw new Error('Errore nella richiesta'); });
+                }
+                return response.json();
+            })
+            .then(data => {
+                showNotification(data.message, 'success');
+                updateCollectionValues();
+                setCardOwnedState(cardId, false);
+                applyCardFilter(currentCardFilter);
+            })
+            .catch(error => {
+                console.error('Errore:', error);
+                showNotification(error.message || 'Errore nella rimozione della carta', 'error');
+            })
+            .finally(() => {
+                button.disabled = false;
+            });
+        }
+
+        // ====== CARD STATE ======
+        function setCardOwnedState(cardId, owned) {
+            document.querySelectorAll(`.card-tile[data-card-id="${cardId}"]`).forEach(tile => {
+                tile.classList.toggle('owned', owned);
+                const btn = tile.querySelector('.btn-own');
+                if (btn) {
+                    btn.textContent = owned ? 'Posseduta ✓' : 'Possiedo';
+                }
+            });
+        }
+
+        function applyCardFilter(filter) {
+            document.querySelectorAll('.card-tile').forEach(tile => {
+                const isOwned = tile.classList.contains('owned');
+                let show = true;
+                if (filter === 'owned') show = isOwned;
+                if (filter === 'missing') show = !isOwned;
+                tile.style.display = show ? '' : 'none';
+            });
+        }
+
+        // ====== CARD DETAIL MODAL ======
+        function openCardModal(cardId) {
+            const overlay = document.getElementById('card-modal-overlay');
+            const content = document.getElementById('card-modal-content');
+            if (!overlay || !content) return;
+
+            // Mostra loading
+            content.innerHTML = `
+                <div class="card-modal-loading">
+                    <div class="spinner"></div>
+                    <p>Caricamento dettagli carta...</p>
+                </div>
+            `;
+            overlay.classList.add('open');
+
+            // Recupera i dettagli della carta
+            fetch(`/api/card/${cardId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(data => {
+                            throw new Error(data.error || 'Errore nel caricamento');
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    renderCardDetail(data);
+                })
+                .catch(error => {
+                    console.error('Errore:', error);
+                    content.innerHTML = `
+                        <div class="card-modal-loading">
+                            <p style="color:#c62828; font-weight:700;">Errore: ${error.message}</p>
+                            <button class="btn-green" style="margin-top:15px;" onclick="closeCardModal()">Chiudi</button>
+                        </div>
+                    `;
+                });
+        }
+
+        function closeCardModal(event) {
+            // Se si clicca sull'overlay (non sul contenuto), chiudi
+            if (event && event.target !== event.currentTarget) return;
+            const overlay = document.getElementById('card-modal-overlay');
+            if (overlay) overlay.classList.remove('open');
+        }
+
+        function renderCardDetail(data) {
+            const content = document.getElementById('card-modal-content');
+            if (!content) return;
+
+            const prices = data.prices || {};
+            const cm = prices.cardmarket || {};
+            const tcg = prices.tcgplayer || {};
+            const ebay = prices.ebay || {};
+
+            const types = (data.types || []).join(', ');
+            const metaParts = [];
+            if (data.number) metaParts.push(`#${data.number}`);
+            if (data.rarity) metaParts.push(data.rarity);
+            if (data.hp) metaParts.push(`${data.hp} HP`);
+            if (types) metaParts.push(types);
+            if (data.artist) metaParts.push(`Artista: ${data.artist}`);
+
+            const isAuthenticated = {{ 'true' if user.is_authenticated else 'false' }};
+            const isAdmin = {{ 'true' if is_admin else 'false' }};
+
+            content.innerHTML = `
+                <div class="card-modal-image">
+                    <img src="${data.image_url}" alt="${data.name}" 
+                        onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'280\'%3E%3Crect fill=\'%23ddd\' width=\'200\' height=\'280\'/%3E%3Ctext x=\'50%25\' y=\'50%25\' text-anchor=\'middle\' fill=\'%23999\' font-size=\'16\'%3EImmagine%3C/text%3E%3C/svg%3E'">
+                </div>
+                <div class="card-modal-info">
+                    <h2>${data.name}</h2>
+                    <div class="card-modal-meta">
+                        <span>${metaParts.join(' • ')}</span>
+                        ${data.set_name ? `<div style="margin-top:4px;">${data.set_name}</div>` : ''}
+                    </div>
+
+                    <div class="price-section">
+                        <h3>Prezzi di mercato</h3>
+                        ${renderPriceSource('Cardmarket', 'cm', cm)}
+                        ${renderPriceSource('TCGPlayer', 'tcg', tcg)}
+                        ${renderPriceSource('eBay', 'ebay', ebay)}
+                    </div>
+
+                    ${isAdmin ? `
+                    <div class="admin-price-section">
+                        <h3>Gestione prezzo (Admin)</h3>
+                        <div class="admin-price-row">
+                            <input type="number" id="admin-price-input" step="0.01" min="0" 
+                                placeholder="Prezzo in €" value="${data.main_price || ''}">
+                            <button type="button" class="btn-admin" onclick="adminSavePrice('${data.card_id}', '${data.name}', '${data.set_id}')">
+                                Salva prezzo
+                            </button>
+                        </div>
+                        <p class="admin-price-hint">Imposta il prezzo per questa carta (€). Verrà applicato a tutte le collezioni.</p>
+                    </div>
+                    ` : ''}
+
+                    ${isAuthenticated ? `
+                    <div class="card-modal-actions">
+                        <button type="button" class="btn-own ${data.owned ? 'owned' : ''}" 
+                            data-card-id="${data.card_id}"
+                            data-card-name="${data.name}"
+                            data-card-set="${data.set_id}"
+                            data-card-price="${data.main_price || 0}"
+                            onclick="toggleModalOwnership(this)">
+                            ${data.owned ? 'Posseduta ✓' : 'Aggiungi alla collezione'}
+                        </button>
+                    </div>
+                    ` : `
+                    <div class="card-modal-actions">
+                        <a href="/auth/login" class="btn-own" style="text-align:center; text-decoration:none;">Accedi per aggiungere alla collezione</a>
+                    </div>
+                    `}
+                </div>
+            `;
+        }
+
+        // ====== ADMIN PRICE MANAGEMENT ======
+        function adminSavePrice(cardId, cardName, cardSet) {
+            const input = document.getElementById('admin-price-input');
+            if (!input) return;
+            const price = parseFloat(input.value);
+            if (isNaN(price) || price < 0) {
+                showNotification('Inserisci un prezzo valido', 'error');
+                return;
+            }
+            const language = getCurrentLanguage();
+
+            fetch('/api/admin/card/price', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    card_id: cardId,
+                    name: cardName,
+                    set_id: cardSet,
+                    price: price,
+                    language: language
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Errore nel salvataggio');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                showNotification(data.message, 'success');
+                // Ricarica i dettagli della carta per mostrare il nuovo prezzo
+                openCardModal(cardId);
+                updateCollectionValues();
+            })
+            .catch(error => {
+                console.error('Errore admin:', error);
+                showNotification(error.message || 'Errore nel salvataggio del prezzo', 'error');
+            });
+        }
+
+
+        function renderPriceSource(name, iconClass, source) {
+            const available = source.available;
+            const price = available ? `€${source.price.toFixed(2)}` : 'Non disponibile';
+            const link = (source.url && source.url !== '#') 
+                ? `<a href="${source.url}" target="_blank" rel="noopener noreferrer" class="source-link">Vedi online →</a>` 
+                : '';
+            return `
+                <div class="price-source">
+                    <span class="source-name">
+                        <span class="source-icon ${iconClass}">${name.charAt(0)}</span>
+                        ${name}
+                    </span>
+                    <span class="source-price ${available ? '' : 'na'}">${price}</span>
+                    ${link}
+                </div>
+            `;
+        }
+
+        function toggleModalOwnership(button) {
+            const cardId = button.dataset.cardId;
+            const cardName = button.dataset.cardName;
+            const cardSet = button.dataset.cardSet;
+            const cardPrice = parseFloat(button.dataset.cardPrice) || 0;
+            const isOwned = button.classList.contains('owned');
+
+            if (isOwned) {
+                removeCardFromCollection(button, cardId);
+            } else {
+                addCardToCollection(button, cardId, cardName, cardSet, cardPrice);
+            }
+        }
+
+        // ====== NOTIFICATION ======
         function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = `fixed top-4 right-4 px-6 py-3 rounded shadow-lg text-white z-50 ${
-                type === 'success' ? 'bg-green-500' : 
-                type === 'error' ? 'bg-red-500' : 
-                'bg-blue-500'
-            }`;
-            notification.textContent = message;
-            
-            document.body.appendChild(notification);
-            
+
+            const existing = document.querySelector('.notification');
+            if (existing) existing.remove();
+
+            const notif = document.createElement('div');
+            notif.className = `notification ${type}`;
+            notif.textContent = message;
+            document.body.appendChild(notif);
+
             setTimeout(() => {
-                notification.remove();
+                notif.style.opacity = '0';
+                notif.style.transition = 'opacity 0.3s';
+                setTimeout(() => notif.remove(), 300);
             }, 3000);
         }
     </script>
 </body>
 </html>
+
+

@@ -149,6 +149,7 @@ def scrape_ebay_price(card_name, set_name):
     Restituisce (prezzo, url) o (0.0, None) se fallisce.
     
     eBay è ottimo per prezzi reali di mercato basati su vendite effettive.
+    Riporta il prezzo più basso tra gli articoli venduti.
     """
     try:
         rate_limit()
@@ -168,10 +169,20 @@ def scrape_ebay_price(card_name, set_name):
             f"_sop=13"         # Ordina per: più recenti
         )
         
+        # Header più realistici per evitare il blocco 403
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
+            'Referer': 'https://www.ebay.com/'
         }
         
         response = requests.get(search_url, headers=headers, timeout=10)
@@ -179,6 +190,7 @@ def scrape_ebay_price(card_name, set_name):
         if response.status_code != 200:
             print(f"[SCRAPER] eBay HTTP {response.status_code} per '{card_name}'")
             return 0.0, None
+
         
         soup = BeautifulSoup(response.content, 'html.parser')
         
@@ -226,22 +238,13 @@ def scrape_ebay_price(card_name, set_name):
                         continue
         
         if prices:
-            # Calcola la mediana dei prezzi venduti (più affidabile della media)
-            prices.sort()
-            median_price = prices[len(prices) // 2]
+            # Restituisce il prezzo minimo tra gli articoli venduti
+            # (prezzo più basso = prezzo di mercato più accessibile)
+            min_price = min(prices)
             
-            # Se ci sono abbastanza dati, calcola la media dei prezzi centrali (esclude outlier)
-            if len(prices) >= 5:
-                # Prendi il 50% centrale dei prezzi
-                start_idx = len(prices) // 4
-                end_idx = 3 * len(prices) // 4
-                central_prices = prices[start_idx:end_idx]
-                avg_price = sum(central_prices) / len(central_prices)
-            else:
-                avg_price = median_price
-            
-            print(f"[SCRAPER] eBay prezzo medio per '{card_name}': €{avg_price:.2f} (da {len(prices)} vendite)")
-            return round(avg_price, 2), search_url
+            print(f"[SCRAPER] eBay prezzo minimo per '{card_name}': €{min_price:.2f} (da {len(prices)} vendite)")
+            return round(min_price, 2), search_url
+
         
         print(f"[SCRAPER] eBay nessun prezzo trovato per '{card_name}'")
         return 0.0, search_url

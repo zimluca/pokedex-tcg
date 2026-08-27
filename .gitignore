@@ -1,0 +1,13 @@
+# Ambiente e segreti
+.aider*
+.env
+
+# Database e cache locale (non vanno sul server)
+instance/
+*.db
+
+# Log e file temporanei
+*.log
+__pycache__/
+*.pyc
+

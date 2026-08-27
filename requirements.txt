@@ -1,3 +1,8 @@
 Flask
 Flask-SQLAlchemy
+Flask-Login
 requests
+requests-oauthlib
+oauthlib
+beautifulsoup4
+python-dotenv
