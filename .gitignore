@@ -1,6 +1,7 @@
 # Ambiente e segreti
 .aider*
 .env
+DEPLOY_NOTES.md
 
 # Database e cache locale (non vanno sul server)
 instance/
@@ -10,4 +11,8 @@ instance/
 *.log
 __pycache__/
 *.pyc
+
+# Helper locali di sviluppo (specifici della macchina)
+avvia_sito.bat
+abilita_rete_locale.bat
 

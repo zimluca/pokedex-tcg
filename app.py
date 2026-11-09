@@ -3,10 +3,12 @@ import re
 import time
 import threading
 import json
+import base64
 from datetime import datetime
 
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from flask_login import LoginManager, login_required, current_user
 import requests
@@ -21,6 +23,11 @@ from price_updater import start_price_updater
 app = Flask(__name__)
 app.config.from_object(Config)
 db.init_app(app)
+
+# Dietro un reverse proxy (tunnel cloudflared/ngrok, PythonAnywhere) lo schema originale
+# arriva nell'header X-Forwarded-Proto. ProxyFix lo applica, così gli URL generati
+# (in particolare il redirect URI OAuth) sono https:// e non http://.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 # Configurazione Flask-Login
 login_manager = LoginManager()
@@ -67,6 +74,20 @@ CACHE_TTL_HOURS = 24   # ore di validità del prezzo in cache prima di rifare sc
 # (fallback alla chiave usata durante lo sviluppo)
 POKEMON_API_KEY = os.environ.get('POKEMON_API_KEY', 'a72c1fed-a82f-4aa8-8974-106c8f056733')
 HEADERS = {'X-Api-Key': POKEMON_API_KEY}
+
+# ====== SCANNER FOTOCAMERA (AI Vision con Google Gemini) ======
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+GEMINI_API_KEY = Config.GEMINI_API_KEY
+GEMINI_MODEL = Config.GEMINI_MODEL
+GEMINI_TIMEOUT = 60                      # secondi: il riconoscimento di un'immagine richiede 10-20s
+SCAN_MAX_IMAGE_BYTES = 8 * 1024 * 1024   # 8 MB: dimensione massima dell'immagine accettata
+
+# Prompt di sistema inviato al modello: deve restituire SOLO il JSON richiesto
+SCAN_SYSTEM_PROMPT = (
+    'Analizza questa carta Pokémon. Restituisci ESATTAMENTE un JSON con due chiavi: '
+    '"name" (il nome del Pokémon) e "number" (il numero della carta nel set, es. 025/165). '
+    'Non scrivere altro'
+)
 
 sets_cache = None
 set_cards_cache = {}  # cache in memoria: set_id -> lista di carte già scaricate
@@ -534,6 +555,290 @@ def sort_by_number(cards):
     return cards
 
 
+# ====== SCANNER FOTOCAMERA: RICONOSCIMENTO E RICERCA ======
+
+def decode_scan_image(data_uri):
+    """Decodifica l'immagine Base64 ricevuta dal frontend (anche in formato data URI).
+    Restituisce (immagine_bytes, mime_type).
+    Solleva ValueError con un messaggio leggibile se i dati non sono validi."""
+    if not data_uri or not isinstance(data_uri, str):
+        raise ValueError('Immagine mancante nella richiesta')
+
+    payload = data_uri.strip()
+    mime_type = 'image/jpeg'
+
+    # Il frontend invia un data URI: "data:image/jpeg;base64,...."
+    if payload.startswith('data:'):
+        header, _, payload = payload.partition(',')
+        match = re.match(r'data:([^;]+)', header)
+        if match:
+            mime_type = match.group(1).lower()
+
+    if mime_type not in ('image/jpeg', 'image/png', 'image/webp'):
+        raise ValueError('Formato immagine non supportato: usa JPEG, PNG o WEBP')
+
+    try:
+        image_bytes = base64.b64decode(payload)
+    except Exception:
+        raise ValueError('Immagine non valida: codifica Base64 non riconosciuta')
+
+    if not image_bytes:
+        raise ValueError('Immagine vuota')
+
+    if len(image_bytes) > SCAN_MAX_IMAGE_BYTES:
+        raise ValueError('Immagine troppo grande: scatta una foto a risoluzione più bassa')
+
+    return image_bytes, mime_type
+
+
+def _extract_gemini_text(response_data):
+    """Estrae il testo dalla risposta di Gemini.
+    Restituisce una stringa vuota se il modello non ha prodotto contenuto."""
+    candidates = response_data.get('candidates') or []
+    if candidates:
+        parts = (candidates[0].get('content') or {}).get('parts') or []
+        return ''.join(part.get('text', '') for part in parts).strip()
+
+    # Nessun candidato: il modello potrebbe aver bloccato l'immagine
+    feedback = response_data.get('promptFeedback') or {}
+    if feedback.get('blockReason'):
+        print(f"[SCAN] Immagine rifiutata dal modello: {feedback.get('blockReason')}")
+    return ''
+
+
+def _parse_scan_json(text):
+    """Converte la risposta del modello in dizionario.
+    Tollerante ai blocchi markdown (```json ... ```) e a testo aggiuntivo attorno al JSON."""
+    if not text:
+        raise RuntimeError('Il riconoscimento non ha prodotto risultati: riprova con una foto più nitida')
+
+    cleaned = text.strip()
+
+    # Rimuove eventuali fence markdown
+    if cleaned.startswith('```'):
+        cleaned = re.sub(r'^```[a-zA-Z]*\s*', '', cleaned)
+        cleaned = re.sub(r'\s*```$', '', cleaned).strip()
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Fallback: estrae il primo oggetto JSON presente nel testo
+        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+    raise RuntimeError('Il modello ha restituito una risposta non valida: riprova')
+
+
+def analyze_card_image(image_bytes, mime_type='image/jpeg'):
+    """Invia l'immagine a Google Gemini (modello multimodale) e restituisce (nome, numero).
+    Solleva RuntimeError con un messaggio leggibile in caso di problemi."""
+    if not GEMINI_API_KEY:
+        raise RuntimeError('Scanner non configurato: imposta la variabile GEMINI_API_KEY nel file .env')
+
+    url = f"{GEMINI_API_BASE}/{GEMINI_MODEL}:generateContent"
+    payload = {
+        'systemInstruction': {'parts': [{'text': SCAN_SYSTEM_PROMPT}]},
+        'contents': [{
+            'parts': [
+                {'text': 'Riconosci la carta Pokémon in questa foto.'},
+                {
+                    'inline_data': {
+                        'mime_type': mime_type,
+                        'data': base64.b64encode(image_bytes).decode('ascii')
+                    }
+                }
+            ]
+        }],
+        # temperature 0 = risposta deterministica; responseMimeType = JSON puro
+        'generationConfig': {'temperature': 0.0, 'responseMimeType': 'application/json'}
+    }
+
+    try:
+        response = requests.post(
+            url,
+            params={'key': GEMINI_API_KEY},
+            json=payload,
+            timeout=GEMINI_TIMEOUT
+        )
+    except requests.exceptions.RequestException as e:
+        print(f"[SCAN] Errore di connessione al servizio di riconoscimento: {e}")
+        raise RuntimeError('Impossibile contattare il servizio di riconoscimento: controlla la connessione e riprova')
+
+    if response.status_code != 200:
+        print(f"[SCAN] Errore Gemini (HTTP {response.status_code}): {response.text[:500]}")
+        if response.status_code in (401, 403):
+            raise RuntimeError('Chiave API Gemini non valida: controlla la configurazione')
+        if response.status_code == 404:
+            raise RuntimeError(
+                f'Modello Gemini "{GEMINI_MODEL}" non disponibile: aggiorna GEMINI_MODEL nel file .env'
+            )
+        if response.status_code == 429:
+            raise RuntimeError('Servizio di riconoscimento sovraccarico: riprova tra qualche istante')
+        raise RuntimeError('Il servizio di riconoscimento ha restituito un errore: riprova più tardi')
+
+    try:
+        response_data = response.json()
+    except ValueError:
+        raise RuntimeError('Risposta non valida dal servizio di riconoscimento')
+
+    data = _parse_scan_json(_extract_gemini_text(response_data))
+    name = str(data.get('name') or '').strip()
+    number = str(data.get('number') or '').strip()
+
+    if not name or name.lower() in ('sconosciuto', 'sconosciuta', 'unknown', 'null', 'none'):
+        raise RuntimeError('Carta non riconosciuta: inquadra la carta intera e riprova')
+
+    return name, number
+
+
+def parse_scan_number(number_value):
+    """Separa numero e totale da un numero carta letto dalla scansione.
+    Esempi: '025/165' -> ('025', 165); 'TG05/TG30' -> ('TG05', 30); '25' -> ('25', None)."""
+    if not number_value or not isinstance(number_value, str):
+        return '', None
+
+    raw = number_value.strip().upper().replace(' ', '')
+    numero, _, totale = raw.partition('/')
+
+    total_int = None
+    match = re.search(r'\d+', totale)
+    if match:
+        try:
+            total_int = int(match.group())
+        except ValueError:
+            total_int = None
+
+    return numero, total_int
+
+
+def fetch_cards_page(query, page_size=60):
+    """Scarica una singola pagina di risultati dall'API Pokémon TCG.
+    Più leggera di fetch_all_cards(): serve per le ricerche mirate dello scanner.
+    Restituisce None in caso di errore di connessione."""
+    params = {
+        'q': query,
+        'page': 1,
+        'pageSize': page_size,
+        'select': 'id,name,number,set,images,cardmarket,tcgplayer,rarity'
+    }
+    response = api_get(f"{POKEMON_API_BASE}/cards", params=params)
+    if response is None:
+        return None
+    return response.json().get('data', [])
+
+
+def pick_best_card_match(cards, numero, totale):
+    """Sceglie la carta più coerente con il numero letto dalla scansione.
+    Se il numero non è disponibile, restituisce il primo risultato (ordine di rilevanza dell'API)."""
+    if not cards:
+        return None
+    if not numero:
+        return cards[0]
+
+    target = extract_card_number(numero)
+    if target <= 0:
+        return cards[0]
+
+    exact = [c for c in cards if extract_card_number(c.get('number', '')) == target]
+    if not exact:
+        return None
+
+    # Il totale del set aiuta a distinguere carte con lo stesso numero in set diversi
+    if totale:
+        for card in exact:
+            set_data = card.get('set') or {}
+            if (set_data.get('printedTotal') or set_data.get('total')) == totale:
+                return card
+
+    return exact[0]
+
+
+def find_card_by_name_and_number(name, number_value):
+    """Cerca nell'API Pokémon TCG la carta con il nome e il numero indicati.
+    Restituisce il dizionario della carta API oppure None se non viene trovata."""
+    # Le virgolette romperebbero la query dell'API: le rimuoviamo dal nome
+    name = (name or '').strip().replace('"', '').replace('\\', '')
+    if not name:
+        return None
+
+    numero, totale = parse_scan_number(number_value)
+
+    if numero:
+        # Il campo 'number' dell'API è una stringa ("25", "TG05", ...):
+        # proviamo alcune varianti per gestire gli zeri iniziali (es. "025" -> "25")
+        variants = [numero]
+        if numero.isdigit():
+            for candidate in (numero.lstrip('0'), numero.zfill(3)):
+                if candidate and candidate not in variants:
+                    variants.append(candidate)
+
+        for candidate in variants:
+            cards = fetch_cards_page(f'name:"{name}" number:{candidate}')
+            if cards:
+                best = pick_best_card_match(cards, numero, totale)
+                if best:
+                    return best
+
+    # Fallback: ricerca per solo nome e confronto dei numeri lato server
+    cards = fetch_cards_page(f'name:"{name}"', page_size=250)
+    if not cards:
+        return None
+    return pick_best_card_match(cards, numero, totale)
+
+
+def detect_price_source(card, price, language='en'):
+    """Determina la fonte del prezzo principale di una carta (campo CollectedCard.price_source).
+    Segue la stessa priorità usata in /api/card/<card_id>:
+    prezzo manuale admin -> Cardmarket (IT) / TCGPlayer (EN) -> prezzo predefinito per rarità."""
+    if not price or price <= 0:
+        return None
+
+    # 0. Prezzo manuale impostato dall'amministratore: priorità assoluta
+    manual = PriceCache.query.filter_by(
+        card_id=card.get('id', ''),
+        language=language,
+        source='manual'
+    ).first()
+    if manual and manual.price and manual.price > 0:
+        return 'manual'
+
+    # 1. Prezzo Cardmarket (stessa priorità di extract_price_info)
+    cardmarket_price = 0.0
+    prices = (card.get('cardmarket') or {}).get('prices') or {}
+    if isinstance(prices, dict):
+        priority_keys = ['lowPrice', 'trendPrice', 'averageSellPrice', 'avg1', 'avg7', 'avg30', 'suggestedPrice']
+        keys_to_check = priority_keys + [k for k in prices.keys() if k not in priority_keys]
+        for key in keys_to_check:
+            try:
+                value = float(prices.get(key))
+            except (ValueError, TypeError):
+                continue
+            if value > 0:
+                cardmarket_price = value
+                break
+
+    # 2. Prezzo TCGPlayer
+    tcgplayer_price, _ = extract_tcgplayer_price(card.get('tcgplayer'))
+
+    if language == 'it':
+        if cardmarket_price > 0:
+            return 'cardmarket'
+        if tcgplayer_price > 0:
+            return 'tcgplayer'
+    else:
+        if tcgplayer_price > 0:
+            return 'tcgplayer'
+        if cardmarket_price > 0:
+            return 'cardmarket'
+
+    # 3. Nessun prezzo di mercato: il prezzo salvato è quello predefinito per rarità
+    return 'default'
+
+
 def calculate_collection_stats(user_id=None):
     """Calcola statistiche della collezione: valore, conteggi e aggregati per set.
     Se user_id è None, usa l'utente corrente.
@@ -565,6 +870,98 @@ def calculate_collection_stats(user_id=None):
         return 0.0, {}, {}
 
 
+def build_market_analysis(card_id, current_price):
+    """Costruisce l'analisi di mercato mostrata nella scheda finanziaria della carta.
+    NOTA: lo storico è SIMULATO (deterministico rispetto alla carta) finché non
+    verranno integrati i prezzi storici reali (Cardmarket / eBay).
+    Restituisce: history, ema7, ema30, zscore, momentum, trend, confidenza, ecc."""
+    from datetime import date, timedelta
+    import random
+
+    price = float(current_price or 0)
+    rng = random.Random(f"{card_id}:{round(price, 2)}")
+
+    days = 30
+    base = price if price > 0 else 1.0
+    value = base * (1 + rng.uniform(-0.10, 0.10))
+    history = []
+    for index in range(days):
+        value = max(0.01, value * (1 + rng.uniform(-0.018, 0.020)))
+        day = date.today() - timedelta(days=days - 1 - index)
+        history.append({'date': day.isoformat(), 'price': round(value, 2)})
+
+    # L'ultimo punto coincide sempre con il prezzo attuale della carta
+    if price > 0:
+        history[-1]['price'] = round(price, 2)
+
+    prices = [point['price'] for point in history]
+    average = sum(prices) / len(prices)
+    variance = sum((point - average) ** 2 for point in prices) / len(prices)
+    deviation = variance ** 0.5
+
+    def ema(series, period):
+        """Media mobile esponenziale."""
+        k = 2 / (period + 1)
+        result = series[0]
+        for point in series[1:]:
+            result = point * k + result * (1 - k)
+        return result
+
+    ema7 = ema(prices, 7)
+    ema30 = ema(prices, 30)
+    zscore = ((price - average) / deviation) if deviation > 0 else 0.0
+    momentum = ((prices[-1] - prices[0]) / prices[0] * 100) if prices[0] else 0.0
+
+    if zscore <= -1.0 or momentum > 3:
+        trend = 'buy'
+    elif zscore >= 1.0 or momentum < -3:
+        trend = 'sell'
+    else:
+        trend = 'hold'
+
+    labels = {'buy': 'Compra', 'sell': 'Vendi', 'hold': 'Mantieni'}
+    volatility = (deviation / average * 100) if average else 0.0
+    # Più lo storico è stabile, più il segnale è affidabile
+    confidence = int(max(45, min(92, round(90 - volatility * 1.6))))
+
+    return {
+        'available': price > 0,
+        'history': history,
+        'ema7': round(ema7, 2),
+        'ema30': round(ema30, 2),
+        'average': round(average, 2),
+        'zscore': round(zscore, 2),
+        'momentum': round(momentum, 1),
+        'volatility': round(volatility, 1),
+        'min': round(min(prices), 2),
+        'max': round(max(prices), 2),
+        'trend': trend,
+        'trend_label': labels[trend],
+        'confidence': confidence,
+        'simulated': True,
+    }
+
+
+def get_navigation_context():
+    """Contesto comune a tutte le pagine (utente, lingua, statistiche portafoglio)."""
+    user_language = get_user_language()
+
+    if current_user.is_authenticated:
+        total_value, set_values, set_counts = calculate_collection_stats()
+    else:
+        total_value, set_values, set_counts = 0.0, {}, {}
+
+    return {
+        'user': current_user,
+        'is_admin': is_admin_user(),
+        'user_language': user_language or '',
+        'total_value': total_value,
+        'set_values': set_values,
+        'set_counts': set_counts,
+        'owned_count': sum(set_counts.values()) if set_counts else 0,
+    }
+
+
 def render_cards_page(cards=None, current_set_id=None, error=None):
     """Funzione helper per renderizzare la pagina con le carte.
     Elimina duplicazione di codice tra le varie rotte."""
@@ -572,37 +969,41 @@ def render_cards_page(cards=None, current_set_id=None, error=None):
     # Ottieni lingua preferita e filtra i set
     user_language = get_user_language()
     sets = get_all_sets(language_filter=user_language)
-    
-    # Calcola statistiche solo se l'utente è autenticato
-    if current_user.is_authenticated:
-        total_value, set_values, set_counts = calculate_collection_stats()
-    else:
-        total_value, set_values, set_counts = 0.0, {}, {}
 
+    # Contesto comune (utente, lingua, statistiche del portafoglio)
+    context = get_navigation_context()
+    set_counts = context['set_counts']
+
+    # Nome leggibile e totale dell'espansione corrente
+    current_set_name = None
     current_set_total = 0
     if current_set_id:
         # Preferisci il totale API del set; se manca, usa le carte già caricate
         for set_data in sets:
             if set_data.get('id') == current_set_id:
+                current_set_name = set_data.get('name')
                 current_set_total = set_data.get('total') or set_data.get('printedTotal') or 0
                 break
         if not current_set_total and cards:
             current_set_total = len(cards)
-    
+
+    # Valore medio per carta (KPI della dashboard)
+    avg_card_value = 0.0
+    if context['owned_count']:
+        avg_card_value = round(context['total_value'] / context['owned_count'], 2)
+
     return render_template(
         'index.html',
         sets=sets,
         results=cards or [],
-        total_value=total_value,
-        set_values=set_values,
-        set_counts=set_counts,
         current_set_id=current_set_id,
+        current_set_name=current_set_name,
         current_set_owned=set_counts.get(current_set_id, 0) if current_set_id else 0,
         current_set_total=current_set_total,
+        avg_card_value=avg_card_value,
         error=error,
-        user=current_user,
-        user_language=user_language or '',
-        is_admin=is_admin_user()
+        active_page='dashboard',
+        **context
     )
 
 
@@ -655,6 +1056,70 @@ def get_set_cards(set_id):
     
     return render_cards_page(cards=cards, current_set_id=set_id)
 
+
+
+@app.route('/news')
+def news():
+    """Pagina 'Mercato & News'.
+    Per ora mostra una lista dimostrativa di notizie: la struttura è già pronta
+    per essere alimentata da una vera fonte (feed RSS / API di settore)."""
+    news_items = [
+        {
+            'id': 1,
+            'title': 'Il mercato delle carte Pokémon supera i 2 miliardi di euro',
+            'date': '6 novembre 2026',
+            'date_iso': '2026-11-06',
+            'tag': 'Trend',
+            'source': 'Market Watch',
+            'read_time': '3 min',
+            'impact': 'up',
+            'impact_label': 'Rialzo',
+            'summary': (
+                'Le vendite di carte singole crescono a doppia cifra trainte dalle serie '
+                'speciali e dal collezionismo internazionale. I set più recenti registrano '
+                'volumi in aumento del 12% rispetto allo scorso trimestre.'
+            ),
+        },
+        {
+            'id': 2,
+            'title': 'Cardmarket: nuove soglie di prezzo per le ristampe',
+            'date': '4 novembre 2026',
+            'date_iso': '2026-11-04',
+            'tag': 'Prezzi',
+            'source': 'Cardmarket Insight',
+            'read_time': '4 min',
+            'impact': 'warn',
+            'impact_label': 'Osservare',
+            'summary': (
+                'L\'introduzione delle ristampe ha ridotto il prezzo medio delle carte '
+                'full art del 7%. Gli analisti consigliano di attendere la stabilizzazione '
+                'prima di nuovi acquisti sulle rarità più alte.'
+            ),
+        },
+        {
+            'id': 3,
+            'title': 'Collezionismo: cresce il gradimento per le carte in italiano',
+            'date': '2 novembre 2026',
+            'date_iso': '2026-11-02',
+            'tag': 'Collezionismo',
+            'source': 'TCG Italia',
+            'read_time': '2 min',
+            'impact': 'down',
+            'impact_label': 'Ribasso',
+            'summary': (
+                'Le carte in lingua italiana stanno recuperando valore rispetto alle '
+                'controparti inglesi, con una contrazione dei prezzi delle versioni EN '
+                'sui mercati europei.'
+            ),
+        },
+    ]
+
+    return render_template(
+        'news.html',
+        news_items=news_items,
+        active_page='news',
+        **get_navigation_context()
+    )
 
 
 @app.route('/api/collection/add', methods=['POST'])
@@ -760,6 +1225,126 @@ def add_to_collection():
             return jsonify({"error": "Dati mancanti per salvare la carta"}), 400
         else:
             return jsonify({"error": f"Errore nel salvataggio: {error_msg}"}), 500
+
+
+@app.route('/api/scan-card', methods=['POST'])
+@login_required
+def scan_card():
+    """Riconosce una carta Pokémon da una foto e la aggiunge alla collezione.
+    Flusso: immagine Base64 -> AI Vision (Google Gemini) -> API Pokémon TCG -> salvataggio.
+    Restituisce sempre JSON, anche in caso di errore, per non far crashare il frontend."""
+    data = request.get_json(silent=True) or {}
+
+    # Lingua della carta (default 'en', solo 'it' o 'en' supportati)
+    language = data.get('language', 'en')
+    if language not in ('it', 'en'):
+        language = 'en'
+
+    # 1. Validazione dell'immagine ricevuta
+    try:
+        image_bytes, mime_type = decode_scan_image(data.get('image'))
+    except ValueError as e:
+        print(f"[SCAN] Immagine non valida: {e}")
+        return jsonify({"error": str(e)}), 400
+
+    print(f"[SCAN] Nuova scansione - User ID: {current_user.id}, immagine: {len(image_bytes)} bytes ({mime_type})")
+
+    # 2. Riconoscimento della carta con AI Vision
+    try:
+        card_name, card_number = analyze_card_image(image_bytes, mime_type)
+    except RuntimeError as e:
+        print(f"[SCAN] Riconoscimento non riuscito: {e}")
+        return jsonify({"error": str(e)}), 502
+    except Exception as e:
+        print(f"[SCAN] Errore imprevisto nel riconoscimento: {e}")
+        return jsonify({"error": "Errore durante il riconoscimento della carta"}), 500
+
+    print(f"[SCAN] Carta riconosciuta: '{card_name}' n. '{card_number}'")
+
+    # 3. Ricerca della carta esatta nell'API Pokémon TCG
+    try:
+        card = find_card_by_name_and_number(card_name, card_number)
+    except Exception as e:
+        print(f"[SCAN] Errore nella ricerca della carta: {e}")
+        return jsonify({"error": "Errore nella ricerca della carta"}), 500
+
+    if not card:
+        return jsonify({
+            "error": f"Carta non trovata ('{card_name}' n. {card_number or '?'}): riprova inquadrando meglio la carta"
+        }), 404
+
+    card_id = card.get('id', '')
+    set_id = (card.get('set') or {}).get('id', '')
+    set_full_name = (card.get('set') or {}).get('name', set_id)
+
+    # Prezzo e dati "pronti per la collezione" con la stessa logica del resto dell'app
+    formatted = format_card(card, language=language)
+    price = formatted.get('prezzo_stimato', 0.0)
+
+    card_payload = {
+        'card_id': card_id,
+        'name': formatted.get('nome_carta', card_name),
+        'number': formatted.get('numero', card_number),
+        'set_id': formatted.get('id_set', set_id),
+        'set_name': set_full_name,
+        'image_url': formatted.get('immagine_url', ''),
+        'rarity': formatted.get('rarity', ''),
+        'price': round(price, 2),
+        'price_available': formatted.get('prezzo_disponibile', False),
+        'language': language
+    }
+
+    # 4. Salvataggio nella collezione (senza duplicati)
+    already_owned = CollectedCard.query.filter_by(
+        user_id=current_user.id,
+        api_card_id=card_id,
+        language=language
+    ).first()
+
+    if already_owned:
+        print(f"[SCAN] Carta già in collezione per user {current_user.id}: {card_id}")
+        return jsonify({
+            "message": "Carta già presente in collezione",
+            "owned": True,
+            "card": card_payload
+        }), 200
+
+    try:
+        collected = CollectedCard(
+            user_id=current_user.id,
+            api_card_id=card_id,
+            name=card_payload['name'][:100],
+            set_name=card_payload['set_id'][:100],
+            language=language,
+            price=price,
+            price_updated_at=datetime.utcnow(),
+            price_source=detect_price_source(card, price, language)
+        )
+        db.session.add(collected)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[SCAN] Errore nel salvataggio della carta {card_id}: {e}")
+        import traceback
+        traceback.print_exc()
+
+        # Se la carta è stata aggiunta nel frattempo (doppio scatto), non è un errore
+        if "UNIQUE constraint failed" in str(e):
+            return jsonify({
+                "message": "Carta già presente in collezione",
+                "owned": True,
+                "card": card_payload
+            }), 200
+
+        return jsonify({"error": "Errore nel salvataggio della carta"}), 500
+
+    print(f"[SCAN] Carta aggiunta alla collezione: {card_id} ({card_payload['name']}) per user {current_user.id}")
+
+    return jsonify({
+        "message": "Carta riconosciuta e aggiunta alla collezione",
+        "owned": True,
+        "card": card_payload
+    }), 200
 
 
 @app.route('/api/collection/update_price', methods=['POST'])
@@ -1001,6 +1586,7 @@ def get_card_detail(card_id):
             },
             'main_price': round(main_price, 2),
             'main_source': main_source,
+            'market': build_market_analysis(card_id, main_price),
             'owned': owned
         }), 200
 
@@ -1262,4 +1848,19 @@ if __name__ == "__main__":
     # usa il server WSGI (es. wsgi.py su PythonAnywhere, o gunicorn/waitress).
     # Il debug è attivo solo se FLASK_DEBUG=1 (sviluppo locale).
     debug_mode = os.environ.get('FLASK_DEBUG', '0').lower() in ('1', 'true', 'yes')
-    app.run(debug=debug_mode, threaded=True)
+
+    # Host/porta configurabili da .env:
+    # 127.0.0.1 = raggiungibile solo da questo PC
+    # 0.0.0.0   = raggiungibile anche dallo smartphone nella stessa rete Wi-Fi
+    host = os.environ.get('FLASK_HOST', '127.0.0.1')
+    try:
+        port = int(os.environ.get('FLASK_PORT', '5000'))
+    except ValueError:
+        port = 5000
+
+    if host == '0.0.0.0':
+        print(f"[SERVER] In ascolto sulla rete locale (porta {port}): apri http://<IP-del-PC>:{port} dallo smartphone")
+    else:
+        print(f"[SERVER] In ascolto solo su locale: http://127.0.0.1:{port}")
+
+    app.run(host=host, port=port, debug=debug_mode, threaded=True)

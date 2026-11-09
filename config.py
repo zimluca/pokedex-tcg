@@ -22,6 +22,16 @@ class Config:
     # OAuth redirect URI (deve corrispondere a quello configurato in Google Console)
     OAUTHLIB_INSECURE_TRANSPORT = os.environ.get('OAUTHLIB_INSECURE_TRANSPORT', '1')  # Solo per sviluppo locale
     
+    # ====== SCANNER FOTOCAMERA (AI Vision) ======
+    # Chiave API Google Gemini, usata per riconoscere le carte dalle foto.
+    # Ottienila da: https://aistudio.google.com/app/apikey
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+
+    # Modello multimodale usato per il riconoscimento (deve supportare le immagini).
+    # Può essere sovrascritto da variabile d'ambiente senza toccare il codice.
+    # Nota: i modelli 1.5 e 2.5 non sono più disponibili per le nuove chiavi API.
+    GEMINI_MODEL = os.environ.get('GEMINI_MODEL') or 'gemini-3.5-flash'
+
     # ====== SCRAPING ======
     # Se False, lo scraping automatico dei prezzi (eBay/Cardmarket/TCGPlayer)
     # è DISATTIVATO. I prezzi vengono presi solo dall'API Pokémon e dalle
